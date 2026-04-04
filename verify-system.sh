@@ -401,9 +401,9 @@ echo ""
 echo "待完成事項："
 # 檢查 PLACEHOLDER 是否還在
 if grep -q "PLACEHOLDER" CLAUDE.md 2>/dev/null; then
-  echo "  [ ] 填入真實 Payhip 連結（CLAUDE.md 中仍有 PLACEHOLDER）"
+  echo "  [ ] 填入真實 Whop 連結（CLAUDE.md 中仍有 PLACEHOLDER_WHOP_*）"
 else
-  echo "  [x] Payhip 連結已設定"
+  echo "  [x] Whop 連結已設定"
 fi
 echo "  [ ] 確認 Reddit 帳號準備好"
 echo "  [ ] VPS 部署後執行 deploy.sh 設定 cron 排程"
