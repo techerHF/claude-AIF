@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI 無人工廠 Dashboard v7
-— 圓桌協作室：空間型 Agent 可視化 + 6 核心座位 + 後勤支援區 + 智能聊天
+AI 無人工廠 Dashboard v8
+— 像素辦公室：PixiJS 空間型辦公室 + 3 欄佈局 + 對話氣泡 + 檔案飛行動畫
 執行：python3 ~/ai-factory/dashboard.py
 """
 
@@ -102,27 +102,21 @@ PIPELINE_FLOW = [
    "hooks": ["memory-update.sh"]},
 ]
 
-# agent 之間的檔案傳遞標示（顯示在連接線上）
 FILE_TRANSFERS = [
-  ["demand_signals.json","affiliate-links.json"],   # 1→2
-  ["progress.json（主題）"],                          # 2→3
-  ["articles/*.md"],                                  # 3→4
-  ["articles/*.md（SEO完成）"],                       # 4→5
-  ["articles/*-medium.md"],                           # 5→6
-  ["articles/*-zh.md"],                               # 6→7
-  ["articles/*.md（審核通過）"],                      # 7→8
-  ["reddit-history.json"],                            # 8→9
-  ["topic-performance.json"],                         # 9→10
-  ["writing-style.md（更新）"],                       # 10→11
+  ["demand_signals.json","affiliate-links.json"],
+  ["progress.json（主題）"],
+  ["articles/*.md"],
+  ["articles/*.md（SEO完成）"],
+  ["articles/*-medium.md"],
+  ["articles/*-zh.md"],
+  ["articles/*.md（審核通過）"],
+  ["reddit-history.json"],
+  ["topic-performance.json"],
+  ["writing-style.md（更新）"],
 ]
 
-PHASE_COLOR = {
-  "探索":"#8193A8","策略":"#8B85A0","生產":"#727A8C",
-  "品管":"#B89B72","發布":"#7C9A7E","回饋":"#B89B72","進化":"#8B85A0",
-}
-
 # ══════════════════════════════════════════════════════════
-#  資料函數
+#  資料函數（Python backend — 與 v7 相同，不動）
 # ══════════════════════════════════════════════════════════
 
 def rj(path, default=None):
@@ -158,7 +152,6 @@ def cron_lines():
     except: return []
 
 def file_stat(path_str):
-    """回傳檔案狀態（是否存在、距今幾分鐘、大小）"""
     clean = re.sub(r'（.*?）','',path_str).replace('（','').replace('）','').strip()
     if '*' in clean:
         try:
@@ -193,7 +186,6 @@ def pipeline_status():
 def compute_agent_states():
     pipe   = pipeline_status()
     stages = pipe["stages"]
-    clog   = " ".join(rt("logs/cron.log",50)).lower()
     active_id = None
     waiting  = set()
     for i,s in enumerate(stages):
@@ -217,7 +209,7 @@ def activity_feed():
     prog = rj("logs/progress.json",[])
     for p in reversed(prog[-8:]):
         events.append({"time":p.get("timestamp","")[:16].replace("T"," "),
-            "agent":"writer","msg":f"文章完成：{p.get('title','')}","type":"success"})
+            "agent":"writer","msg":"文章完成："+p.get("title",""),"type":"success"})
     for line in reversed(rt("logs/cron.log",30)):
         line = line.strip()
         if not line: continue
@@ -284,7 +276,6 @@ def run_diagnostics():
     try: has_ph = "PLACEHOLDER" in (BASE/"CLAUDE.md").read_text(encoding="utf-8")
     except: pass
     err_lines = [l.strip() for l in rt("logs/error.log",5) if l.strip()]
-
     if has_ph:
         issues.append({"level":"warn","title":"WHOP 連結未設定",
             "desc":"CLAUDE.md 含 PLACEHOLDER_WHOP_*","tag":"設定"}); score-=15
@@ -307,16 +298,7 @@ def run_diagnostics():
             "desc":"需在 agent 流程加入 logs/api-usage.json 追蹤","tag":"追蹤"})
     if not (BASE/"logs"/"demand_signals.json").exists():
         issues.append({"level":"info","title":"尚未執行完整自動循環",
-            "desc":"demand_signals.json 不存在，researcher 尚未執行","tag":"狀態"})
-
-    prog = rj("logs/progress.json",[])
-    if len(prog)>=4:
-        recent = " ".join(p.get("title","") for p in prog[-5:])
-        for kw in ["電容","壓力","手勢","IoT","ESP32"]:
-            if recent.count(kw)>=2:
-                issues.append({"level":"info","title":"主題略偏集中",
-                    "desc":f"近期「{kw}」題材偏多","tag":"內容"}); break
-
+            "desc":"demand_signals.json 不存在","tag":"狀態"})
     cron_s = "ok" if 0<len(crons)<=2 else ("warn" if len(crons)>2 else "error")
     health = [
         {"name":"模型","status":"ok" if api["minimax"] else "info",
@@ -330,13 +312,11 @@ def run_diagnostics():
     return {"score":max(0,score),"health":health,"issues":issues[:10]}
 
 def get_system_context_summary():
-    """給 chat AI 的系統狀態摘要"""
     state  = rj("logs/progress.json",[])
     diag   = run_diagnostics()
     api    = api_status()
     crons  = cron_lines()
     knows  = knowledge_summary()
-    perf   = rj("logs/topic-performance.json",{})
     arts   = list_articles()
     today  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     today_arts = [p for p in state if p.get("date","")==today]
@@ -358,7 +338,16 @@ def do_chat(message):
     global _chat_history
     api_key, base_url, model = read_api_env()
     if not api_key:
-        return "⚠ 未設定 ANTHROPIC_API_KEY，無法使用聊天。請確認 ~/.claude/settings.json 有 ANTHROPIC_API_KEY。"
+        return (
+            "⚠ 未設定 ANTHROPIC_API_KEY\n\n"
+            "在 VPS 執行：\n"
+            "python3 -c \"\nimport json,pathlib\n"
+            "f=pathlib.Path.home()/'.claude/settings.json'\n"
+            "s=json.loads(f.read_text()) if f.exists() else {}\n"
+            "s.setdefault('env',{})['ANTHROPIC_API_KEY']='sk-ant-YOUR_KEY'\n"
+            "f.write_text(json.dumps(s,indent=2))\nprint('OK')\n\"\n\n"
+            "替換 sk-ant-YOUR_KEY 後重啟 dashboard。"
+        )
     try:
         _chat_history = _chat_history[-8:]
         msgs = _chat_history + [{"role":"user","content":message}]
@@ -387,7 +376,6 @@ def do_chat(message):
         return f"❌ API 錯誤：{str(e)[:150]}"
 
 def post_to_devto(article_name):
-    """發布文章草稿到 dev.to（需要 DEVTO_API_KEY 環境變數）"""
     api_key = os.environ.get("DEVTO_API_KEY","")
     if not api_key:
         try:
@@ -395,17 +383,15 @@ def post_to_devto(article_name):
             api_key = s.get("env",{}).get("DEVTO_API_KEY","")
         except: pass
     if not api_key:
-        return {"ok":False,"error":"未設定 DEVTO_API_KEY。請在 ~/.claude/settings.json 加入 DEVTO_API_KEY。"}
+        return {"ok":False,"error":"未設定 DEVTO_API_KEY"}
     content = get_article_content(article_name)
     if not content: return {"ok":False,"error":"找不到文章"}
     lines = content.splitlines()
     title = next((l.lstrip("#").strip() for l in lines if l.startswith("#")), article_name)
     try:
         payload = json.dumps({"article":{
-            "title": title,
-            "body_markdown": content,
-            "published": False,  # 先存草稿供審閱
-            "tags": ["arduino","sensors","maker","diy"]
+            "title": title, "body_markdown": content,
+            "published": False, "tags": ["arduino","sensors","maker","diy"]
         }}).encode()
         req = urllib.request.Request("https://dev.to/api/articles", data=payload,
             headers={"api-key":api_key,"Content-Type":"application/json"})
@@ -417,7 +403,6 @@ def post_to_devto(article_name):
 
 def get_status_data():
     prog   = rj("logs/progress.json",[])
-    perf   = rj("logs/topic-performance.json",{})
     api    = api_status()
     crons  = cron_lines()
     usage  = api_usage()
@@ -429,8 +414,6 @@ def get_status_data():
     has_ph = False
     try: has_ph = "PLACEHOLDER" in (BASE/"CLAUDE.md").read_text(encoding="utf-8")
     except: pass
-
-    # 為每個 pipeline agent 加上 file_stat
     flow = []
     for a in PIPELINE_FLOW:
         st = agents.get(a["id"],{"status":"idle","txt":"休息中"})
@@ -442,7 +425,6 @@ def get_status_data():
             "skills_avail": check_skills(a["skills"]),
             "hooks_avail":  check_hooks(a["hooks"]),
         })
-
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
         "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -457,7 +439,7 @@ def get_status_data():
         "flow":         flow,
         "feed":         feed,
         "usage":        usage,
-        "perf":         perf.get("categories",{}),
+        "perf":         rj("logs/topic-performance.json",{}).get("categories",{}),
         "diag":         diag,
         "knowledge":    knows,
         "file_transfers": FILE_TRANSFERS,
@@ -476,7 +458,7 @@ def check_hooks(hook_list):
     return [{"name":h,"ok":h in avail} for h in hook_list]
 
 # ══════════════════════════════════════════════════════════
-#  HTML
+#  HTML — Dashboard v8 像素辦公室
 # ══════════════════════════════════════════════════════════
 
 HTML = r"""<!DOCTYPE html>
@@ -484,495 +466,317 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI 無人工廠 v7 — 圓桌協作室</title>
+<title>AI 無人工廠 v8 — 像素辦公室</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
 <style>
 :root{
-  --bg0:#F6F3EE; --bg1:#FBFAF7; --bg2:#F1EEE8; --bg3:#E8E3DA;
-  --b0:#D8D2C7; --b1:#C4BDB5; --ba:#727A8C;
-  --t0:#2F2A24; --t1:#5B544C; --t2:#8A837A;
-  --brand:#727A8C; --brand-s:rgba(114,122,140,0.10); --brand-m:rgba(114,122,140,0.20);
-  --ok:#7C9A7E; --ok-s:rgba(124,154,126,0.12);
-  --warn:#B89B72; --warn-s:rgba(184,155,114,0.12);
-  --err:#B36A6A; --err-s:rgba(179,106,106,0.12);
-  --info:#8193A8; --info-s:rgba(129,147,168,0.10);
-  --pur:#8B85A0; --pur-s:rgba(139,133,160,0.12);
-  --council-r:170px; /* seat orbit radius */
+  --bg0:#0D1117;--bg1:#161B22;--bg2:#1C2333;--bg3:#21262D;
+  --b0:#30363D;--b1:#484F58;
+  --t0:#E6EDF3;--t1:#8B949E;--t2:#484F58;
+  --brand:#58A6FF;--brand-s:rgba(88,166,255,.10);--brand-m:rgba(88,166,255,.20);
+  --ok:#3FB950;--ok-s:rgba(63,185,80,.12);
+  --warn:#D29922;--warn-s:rgba(210,153,34,.12);
+  --err:#F85149;--err-s:rgba(248,81,73,.12);
+  --info:#58A6FF;--info-s:rgba(88,166,255,.10);
+  --pur:#BC8CFF;--pur-s:rgba(188,140,255,.12);
+  --px:'Press Start 2P',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{min-height:100%;background:var(--bg0);color:var(--t0);
-  font-family:'Hiragino Sans','Noto Sans TC',system-ui,-apple-system,sans-serif;
-  font-size:13px;line-height:1.6;}
+html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t0);
+  font-family:'Hiragino Sans','Noto Sans TC',system-ui,sans-serif;
+  font-size:12px;line-height:1.6;}
+body{display:flex;flex-direction:column;}
+@keyframes pls{0%,100%{opacity:1;}50%{opacity:.2;}}
+@keyframes borderGlow{0%,100%{box-shadow:0 0 0 0 rgba(63,185,80,.4);}50%{box-shadow:0 0 6px 2px rgba(63,185,80,.2);}}
 
-/* ── TOPBAR ── */
+/* TOPBAR */
 .topbar{display:flex;align-items:center;justify-content:space-between;
-  padding:0 28px;height:50px;background:var(--bg1);
-  border-bottom:1px solid var(--b0);position:sticky;top:0;z-index:300;}
-.tb-l{display:flex;align-items:center;gap:14px;}
-.logo{font-size:14px;font-weight:700;color:var(--brand);display:flex;align-items:center;gap:7px;}
-.logo-sub{font-size:11.5px;color:var(--t2);font-weight:400;}
-.spill{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;
-  font-size:11px;font-weight:600;background:var(--bg2);border:1px solid var(--b0);}
+  padding:0 14px;height:42px;background:var(--bg1);
+  border-bottom:2px solid var(--b0);flex-shrink:0;z-index:300;}
+.logo{font-family:var(--px);font-size:9px;color:var(--brand);
+  display:flex;align-items:center;gap:10px;}
+.logo-v{font-size:7px;color:var(--t2);font-family:var(--px);}
+.spill{display:flex;align-items:center;gap:5px;padding:2px 9px;
+  border:1px solid var(--b0);font-size:9px;font-weight:700;background:var(--bg2);}
 .sdot{width:6px;height:6px;border-radius:50%;}
-.si .sdot{background:var(--t2);}
-.sr .sdot{background:var(--ok);animation:pls 1.5s infinite;}
-.se .sdot{background:var(--err);}
+.si .sdot{background:var(--t2);} .sr .sdot{background:var(--ok);animation:pls 1.5s infinite;} .se .sdot{background:var(--err);}
 .si .stxt{color:var(--t2);} .sr .stxt{color:var(--ok);} .se .stxt{color:var(--err);}
-@keyframes pls{0%,100%{opacity:1;}50%{opacity:.3;}}
-.tb-r{display:flex;align-items:center;gap:12px;}
-.ts-t{font-size:11px;color:var(--t2);}
-.cdt{font-size:11px;color:var(--brand);font-variant-numeric:tabular-nums;min-width:22px;}
+.tb-r{display:flex;align-items:center;gap:10px;}
+.ts-t{font-size:9px;color:var(--t2);}
+.cdt{font-size:9px;color:var(--brand);min-width:20px;}
 .rbtn{background:none;border:1px solid var(--b0);color:var(--t2);
-  padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;transition:.2s;}
+  padding:3px 9px;cursor:pointer;font-size:9px;transition:.2s;}
 .rbtn:hover{border-color:var(--brand);color:var(--brand);}
 
-/* ── WARN STRIP ── */
-.warn-strip{background:rgba(184,155,114,.07);border-bottom:1px solid rgba(184,155,114,.22);
-  padding:6px 28px;font-size:11.5px;color:var(--warn);display:none;align-items:center;gap:8px;}
+/* WARN STRIP */
+.warn-strip{background:rgba(210,153,34,.08);border-bottom:1px solid rgba(210,153,34,.25);
+  padding:4px 14px;font-size:10px;color:var(--warn);display:none;align-items:center;gap:8px;flex-shrink:0;}
 
-/* ── KPI BAR ── */
+/* KPI BAR */
 .kpi-bar{display:grid;grid-template-columns:repeat(6,1fr);
-  background:var(--bg1);border-bottom:1px solid var(--b0);}
-.kpi-c{padding:11px 18px;border-right:1px solid var(--b0);transition:.15s;}
+  background:var(--bg1);border-bottom:2px solid var(--b0);flex-shrink:0;}
+.kpi-c{padding:7px 10px;border-right:1px solid var(--b0);transition:.15s;}
 .kpi-c:last-child{border-right:none;}
 .kpi-c:hover{background:var(--bg2);}
-.kpi-v{font-size:22px;font-weight:700;letter-spacing:-.4px;line-height:1;color:var(--t0);}
-.kpi-v.accent{color:var(--brand);}
-.kpi-v.ok{color:var(--ok);} .kpi-v.warn{color:var(--warn);} .kpi-v.err{color:var(--err);}
-.kpi-l{font-size:10px;color:var(--t2);margin-top:3px;}
+.kpi-v{font-family:var(--px);font-size:13px;line-height:1.2;color:var(--t0);}
+.kpi-v.accent{color:var(--brand);} .kpi-v.ok{color:var(--ok);} .kpi-v.warn{color:var(--warn);} .kpi-v.err{color:var(--err);}
+.kpi-l{font-size:8px;color:var(--t2);margin-top:3px;}
 
-/* ── LAYOUT ── */
-.main{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:20px 28px;
-  max-width:1520px;margin:0 auto;}
-.left{display:flex;flex-direction:column;gap:16px;}
+/* 3-COL WORKSPACE */
+.workspace{flex:1;display:grid;grid-template-columns:178px 1fr 298px;overflow:hidden;}
 
-/* ── CARD ── */
-.card{background:var(--bg1);border:1px solid var(--b0);border-radius:12px;overflow:hidden;
-  box-shadow:0 1px 3px rgba(50,40,30,.04);transition:box-shadow .2s,border-color .2s;}
-.card:hover{border-color:var(--b1);box-shadow:0 2px 8px rgba(50,40,30,.06);}
-.ch{padding:12px 18px 10px;display:flex;align-items:center;justify-content:space-between;
+/* SIDEBAR */
+.sidebar{background:var(--bg1);border-right:2px solid var(--b0);
+  display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:8px 10px;font-family:var(--px);font-size:7px;
+  color:var(--brand);border-bottom:1px solid var(--b0);letter-spacing:.1em;flex-shrink:0;}
+.sb-filter{display:flex;gap:3px;padding:5px 8px;flex-shrink:0;border-bottom:1px solid var(--b0);}
+.sb-f{font-size:8px;font-weight:700;padding:2px 7px;border:1px solid var(--b0);cursor:pointer;
+  color:var(--t2);transition:.15s;font-family:var(--px);}
+.sb-f.active{border-color:var(--brand);color:var(--brand);background:var(--brand-s);}
+.sb-list{flex:1;overflow-y:auto;padding:4px 6px;}
+.sb-list::-webkit-scrollbar{width:3px;}
+.sb-list::-webkit-scrollbar-thumb{background:var(--b0);}
+.sb-agent{display:flex;align-items:center;gap:7px;padding:5px 6px;
+  cursor:pointer;transition:.15s;border:1px solid transparent;margin-bottom:2px;}
+.sb-agent:hover{background:var(--bg3);}
+.sb-agent.selected{border-color:var(--brand);background:var(--brand-s);}
+.sb-avatar{width:26px;height:26px;border:1px solid var(--b0);
+  display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.sb-agent.working .sb-avatar{border-color:var(--ok);animation:borderGlow 1.4s infinite;}
+.sb-agent.waiting .sb-avatar{border-color:var(--warn);}
+.sb-info{flex:1;min-width:0;}
+.sb-name{font-size:8px;font-weight:700;color:var(--t0);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--px);}
+.sb-badge{display:inline-block;font-size:7px;font-weight:700;padding:1px 5px;margin-top:2px;font-family:var(--px);}
+.sb-badge.working{background:rgba(63,185,80,.15);color:var(--ok);}
+.sb-badge.waiting{background:rgba(210,153,34,.15);color:var(--warn);}
+.sb-badge.idle{background:var(--bg3);color:var(--t2);}
+.sb-health{padding:6px 8px;border-top:1px solid var(--b0);flex-shrink:0;}
+.sb-hr{display:flex;justify-content:space-between;padding:2px 0;font-size:9px;}
+.sb-hl{color:var(--t2);}
+.sb-hv.ok{color:var(--ok);} .sb-hv.warn{color:var(--warn);} .sb-hv.err{color:var(--err);} .sb-hv.info{color:var(--info);}
+
+/* CENTER OFFICE CANVAS */
+.office-wrap{background:var(--bg0);display:flex;align-items:flex-start;
+  justify-content:center;overflow:auto;padding:8px;}
+.office-wrap canvas{image-rendering:pixelated;display:block;}
+#pixi-fb{color:var(--t2);font-size:10px;padding:30px;text-align:center;}
+
+/* RIGHT PANEL */
+.right-panel{background:var(--bg1);border-left:2px solid var(--b0);
+  display:flex;flex-direction:column;overflow:hidden;}
+.rp-tabs{display:flex;border-bottom:2px solid var(--b0);flex-shrink:0;}
+.rp-tab{flex:1;padding:7px 2px;text-align:center;font-size:8px;font-weight:700;
+  cursor:pointer;color:var(--t2);border-right:1px solid var(--b0);
+  font-family:var(--px);transition:.15s;}
+.rp-tab:last-child{border-right:none;}
+.rp-tab.active{color:var(--brand);background:var(--brand-s);}
+.rp-tab:hover:not(.active){color:var(--t1);}
+.rp-pane{flex:1;overflow-y:auto;display:none;flex-direction:column;}
+.rp-pane.active{display:flex;}
+.rp-pane::-webkit-scrollbar{width:3px;}
+.rp-pane::-webkit-scrollbar-thumb{background:var(--b0);}
+
+/* AGENT DETAIL */
+.ad-head{display:flex;align-items:center;gap:9px;padding:10px 12px;
+  border-bottom:1px solid var(--b0);flex-shrink:0;}
+.ad-icon{width:36px;height:36px;border:1px solid var(--b0);
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.ad-name{font-size:11px;font-weight:700;color:var(--t0);}
+.ad-badges{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
+.badge{display:inline-flex;padding:2px 6px;font-size:8.5px;font-weight:700;}
+.b-ok{background:var(--ok-s);color:var(--ok);}
+.b-warn{background:var(--warn-s);color:var(--warn);}
+.b-brand{background:var(--brand-s);color:var(--brand);}
+.b-pur{background:var(--pur-s);color:var(--pur);}
+.b-info{background:var(--info-s);color:var(--info);}
+.ad-desc{padding:8px 12px;font-size:10.5px;color:var(--t1);line-height:1.6;
   border-bottom:1px solid var(--b0);}
-.ct{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--t2);display:flex;align-items:center;gap:6px;}
-.cdot{width:5px;height:5px;border-radius:50%;}
-.cb{padding:14px 18px;}
-
-/* ══════════════════════════════════
-   COUNCIL ROOM (圓桌協作室)
-══════════════════════════════════ */
-.council-wrap{padding:20px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:18px;}
-.council-room{
-  position:relative;width:480px;height:460px;flex-shrink:0;
-}
-/* table surface */
-.council-table{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:240px;height:240px;border-radius:50%;
-  background:radial-gradient(circle at 50% 40%, var(--bg2) 0%, var(--bg3) 100%);
-  border:1.5px solid var(--b1);
-  box-shadow:0 2px 18px rgba(50,40,30,.06),inset 0 1px 3px rgba(255,255,255,.6);
-}
-/* SVG lines */
-.council-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
-
-/* center task display */
-.council-center{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:160px;text-align:center;z-index:10;pointer-events:none;
-}
-.cc-logo{font-size:20px;color:var(--brand);margin-bottom:3px;opacity:.7;}
-.cc-task{font-size:10.5px;font-weight:700;color:var(--t0);line-height:1.4;
-  max-width:140px;margin:0 auto;word-break:break-all;}
-.cc-active{font-size:9.5px;color:var(--brand);margin-top:3px;font-weight:600;}
-.cc-idle{font-size:9.5px;color:var(--t2);margin-top:3px;font-style:italic;}
-
-/* agent seats */
-.agent-seat{
-  position:absolute;transform:translate(-50%,-50%);
-  width:78px;text-align:center;cursor:pointer;z-index:20;
-  transition:transform .2s;
-}
-.agent-seat:hover{transform:translate(-50%,-50%) scale(1.07);}
-.seat-avatar{
-  width:48px;height:48px;border-radius:50%;margin:0 auto 5px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;
-  border:2px solid var(--b1);
-  background:var(--bg1);
-  transition:border-color .3s,box-shadow .3s;
-  position:relative;
-}
-/* working ring */
-@keyframes ring-pulse{0%,100%{box-shadow:0 0 0 0 rgba(114,122,140,.5);}60%{box-shadow:0 0 0 7px rgba(114,122,140,0);}}
-@keyframes breathe{0%,100%{opacity:1;}50%{opacity:.45;}}
-@keyframes seat-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-
-.agent-seat.working .seat-avatar{
-  border-color:var(--brand);
-  box-shadow:0 0 0 3px var(--brand-s);
-  animation:ring-pulse 1.4s ease-out infinite;
-}
-.agent-seat.waiting .seat-avatar{
-  border-color:var(--b1);opacity:.75;
-  animation:breathe 2.2s ease-in-out infinite;
-}
-.agent-seat.idle .seat-avatar{opacity:.55;border-color:var(--b0);}
-.agent-seat.done .seat-avatar{border-color:var(--ok);background:var(--ok-s);}
-
-.seat-name{font-size:9.5px;font-weight:700;color:var(--t1);line-height:1.2;}
-.seat-badge{
-  display:inline-block;font-size:8.5px;font-weight:600;
-  padding:1px 6px;border-radius:999px;margin-top:2px;
-}
-.seat-badge.working{background:var(--brand-s);color:var(--brand);}
-.seat-badge.waiting{background:var(--bg3);color:var(--t2);}
-.seat-badge.idle{background:var(--bg3);color:var(--t2);}
-.seat-badge.done{background:var(--ok-s);color:var(--ok);}
-.seat-phase{font-size:8px;color:var(--t2);margin-top:1px;}
-
-/* active glow dot in top-right of avatar */
-.seat-dot{
-  position:absolute;top:1px;right:1px;
-  width:10px;height:10px;border-radius:50%;
-  border:2px solid var(--bg1);
-}
-.seat-dot.working{background:var(--brand);animation:pls 1.2s infinite;}
-.seat-dot.waiting{background:var(--warn);}
-.seat-dot.idle{background:var(--b1);}
-.seat-dot.done{background:var(--ok);}
-
-/* agent detail drawer */
-.agent-detail{
-  width:100%;background:var(--bg2);border:1px solid var(--b0);
-  border-radius:10px;padding:0;overflow:hidden;
-  max-height:0;transition:max-height .3s ease,padding .3s;
-}
-.agent-detail.open{max-height:320px;padding:14px 16px;}
-.ad-title{font-size:12px;font-weight:700;color:var(--t0);margin-bottom:8px;
-  display:flex;align-items:center;gap:8px;}
-.ad-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;}
-.ad-sec{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--t2);margin-bottom:5px;}
-.file-item{display:flex;align-items:center;gap:5px;font-size:10.5px;padding:2px 0;}
+.ad-sec{padding:7px 12px;}
+.ad-sl{font-size:8px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--t2);margin-bottom:5px;font-family:var(--px);}
+.file-item{display:flex;align-items:center;gap:5px;font-size:10px;padding:2px 0;}
 .file-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
-.file-dot.ok{background:var(--ok);}
-.file-dot.miss{background:var(--b0);}
-.file-path{color:var(--t1);font-family:'SF Mono',Menlo,monospace;font-size:10px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;}
-.file-age{font-size:9.5px;color:var(--t2);white-space:nowrap;flex-shrink:0;}
-.pill-list{display:flex;flex-wrap:wrap;gap:4px;}
-.pill{font-size:9.5px;padding:2px 7px;border-radius:999px;white-space:nowrap;}
-.pill.skill-ok{background:var(--brand-s);color:var(--brand);}
-.pill.skill-miss{background:var(--bg3);color:var(--t2);}
-.pill.hook-ok{background:var(--ok-s);color:var(--ok);}
-.pill.hook-miss{background:var(--err-s);color:var(--err);}
+.file-dot.ok{background:var(--ok);} .file-dot.miss{background:var(--b0);}
+.file-path{color:var(--t1);font-family:'SF Mono',Menlo,monospace;font-size:9.5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px;}
+.file-age{font-size:9px;color:var(--t2);white-space:nowrap;flex-shrink:0;}
+.pills{display:flex;flex-wrap:wrap;gap:3px;}
+.pill{font-size:8.5px;padding:2px 6px;white-space:nowrap;}
+.pill.sk{background:var(--brand-s);color:var(--brand);}
+.pill.sk-x{background:var(--bg3);color:var(--t2);}
+.pill.hk{background:var(--ok-s);color:var(--ok);}
+.pill.hk-x{background:var(--err-s);color:var(--err);}
+.empty{color:var(--t2);font-style:italic;font-size:10px;padding:4px 0;}
 
-/* ── SUPPORT TEAM (後勤支援) ── */
-.support-row{display:flex;gap:8px;padding:14px 18px;}
-.support-item{
-  flex:1;background:var(--bg2);border:1px solid var(--b0);border-radius:9px;
-  padding:10px 8px;text-align:center;cursor:pointer;transition:.2s;
-}
-.support-item:hover{border-color:var(--b1);background:var(--bg1);}
-.support-item.working{border-color:rgba(114,122,140,.35);background:var(--brand-s);}
-.support-item.done{border-color:rgba(124,154,126,.3);background:var(--ok-s);}
-.support-icon{font-size:16px;margin-bottom:4px;}
-.support-icon.working{animation:breathe 1s ease-in-out infinite;}
-.support-name{font-size:9.5px;font-weight:700;color:var(--t1);}
-.support-phase{font-size:8.5px;color:var(--t2);}
-.support-sbadge{font-size:8px;font-weight:600;padding:1px 5px;border-radius:999px;margin-top:3px;display:inline-block;}
-.support-sbadge.working{background:var(--brand-s);color:var(--brand);}
-.support-sbadge.waiting,.support-sbadge.idle{background:var(--bg3);color:var(--t2);}
-.support-sbadge.done{background:var(--ok-s);color:var(--ok);}
-
-/* ── KNOWLEDGE LOOP ── */
-.know-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-.know-box{background:var(--bg2);border:1px solid var(--b0);border-radius:8px;padding:11px;}
-.know-label{font-size:10.5px;font-weight:700;color:var(--t1);margin-bottom:5px;}
-.know-val{font-size:20px;font-weight:800;color:var(--pur);letter-spacing:-.4px;line-height:1;}
-.know-sub{font-size:10px;color:var(--t2);margin-top:2px;}
-.know-bar{background:var(--b0);border-radius:3px;height:2px;margin-top:6px;overflow:hidden;}
-.know-fill{height:100%;background:var(--pur);border-radius:3px;}
-.learn-arrow{
-  font-size:11px;color:var(--t2);text-align:center;padding:8px 0;
-  letter-spacing:.06em;
-}
-
-/* ── MID ROW ── */
-.mid-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-
-/* ── DIAG ── */
-.dh{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px;}
-.hp{background:var(--bg2);border:1px solid var(--b0);border-radius:7px;
-  padding:8px 10px;text-align:center;}
-.hp-n{font-size:9.5px;color:var(--t2);margin-bottom:2px;}
-.hp-v{font-size:13px;font-weight:700;}
-.hp-v.ok{color:var(--ok);} .hp-v.warn{color:var(--warn);}
-.hp-v.error{color:var(--err);} .hp-v.info{color:var(--info);}
-.dl{display:flex;flex-direction:column;gap:5px;}
-.di{display:flex;gap:8px;align-items:flex-start;background:var(--bg2);
-  border:1px solid var(--b0);border-radius:7px;padding:8px 11px;transition:.15s;}
-.di:hover{border-color:var(--b1);}
-.di-ic{width:16px;height:16px;border-radius:50%;flex-shrink:0;margin-top:1px;
-  display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;}
-.di-ic.ok{background:var(--ok-s);color:var(--ok);}
-.di-ic.warn{background:var(--warn-s);color:var(--warn);}
-.di-ic.error{background:var(--err-s);color:var(--err);}
-.di-ic.info{background:var(--info-s);color:var(--info);}
-.di-b{flex:1;min-width:0;}
-.di-t{font-size:11.5px;font-weight:600;color:var(--t0);}
-.di-d{font-size:10px;color:var(--t2);margin-top:1px;}
-.di-tag{font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;
-  background:var(--bg3);color:var(--t2);flex-shrink:0;align-self:center;}
-
-/* ── TOPICS ── */
-.tg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.tb2{background:var(--bg2);border:1px solid var(--b0);border-radius:8px;
-  padding:11px;transition:.2s;}
-.tb2:hover{border-color:var(--b1);}
-.t-cat{font-size:9.5px;font-weight:700;letter-spacing:.07em;margin-bottom:3px;}
-.t-nm{font-size:10.5px;color:var(--t2);margin-bottom:6px;line-height:1.3;}
-.t-vl{font-size:20px;font-weight:800;letter-spacing:-.4px;line-height:1;}
-.t-sb{font-size:10px;color:var(--t2);margin-top:2px;}
-.t-br{background:var(--b0);border-radius:3px;height:2px;margin-top:7px;overflow:hidden;}
-.t-fl{height:100%;border-radius:3px;}
-
-/* ── LOGS ── */
-.log-tabs{display:flex;gap:4px;padding:10px 18px 0;}
-.log-tab{padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;
-  color:var(--t2);background:var(--bg2);border:1px solid var(--b0);transition:.15s;}
-.log-tab:hover{color:var(--t1);}
-.log-tab.active{background:var(--brand-s);border-color:rgba(114,122,140,.3);color:var(--brand);}
-.log-bd{font-family:'SF Mono',Menlo,monospace;font-size:11px;line-height:1.7;color:var(--t2);
-  background:var(--bg2);margin:8px 18px 16px;border:1px solid var(--b0);border-radius:8px;
-  padding:10px 13px;height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;}
-.log-bd::-webkit-scrollbar{width:3px;}
-.log-bd::-webkit-scrollbar-thumb{background:var(--b0);}
-.ll-e{color:var(--err);} .ll-s{color:var(--ok);} .ll-w{color:var(--warn);}
-
-/* ── FEED (right) ── */
-.feed-scroll{max-height:calc(55vh);overflow-y:auto;padding:0 16px 14px;}
-.feed-scroll::-webkit-scrollbar{width:3px;}
-.feed-scroll::-webkit-scrollbar-thumb{background:var(--b0);}
-.fi{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--b0);}
+/* FEED */
+.feed-body{padding:6px 10px;}
+.fi{display:flex;gap:7px;padding:5px 0;border-bottom:1px solid var(--b0);}
 .fi:last-child{border-bottom:none;}
 .fi-dot{width:6px;height:6px;border-radius:50%;margin-top:4px;flex-shrink:0;}
 .fi-dot.success{background:var(--ok);} .fi-dot.warn{background:var(--warn);}
 .fi-dot.error{background:var(--err);} .fi-dot.info{background:var(--t2);}
-.fi-body{flex:1;min-width:0;}
-.fi-badge{display:inline-block;font-size:9.5px;font-weight:700;
-  padding:1px 7px;border-radius:4px;margin-bottom:3px;}
-.fi-msg{font-size:11px;color:var(--t1);line-height:1.5;word-break:break-word;}
-.fi-time{font-size:10px;color:var(--t2);margin-top:1px;}
+.fi-b{flex:1;min-width:0;}
+.fi-badge{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;margin-bottom:2px;}
+.fi-msg{font-size:10px;color:var(--t1);line-height:1.5;word-break:break-word;}
+.fi-t{font-size:9px;color:var(--t2);margin-top:1px;}
 
-/* ── CHAT ── */
-.chat-msgs{height:190px;overflow-y:auto;padding:12px 16px;
-  display:flex;flex-direction:column;gap:7px;}
+/* CHAT */
+.chat-msgs{flex:1;overflow-y:auto;padding:9px 10px;
+  display:flex;flex-direction:column;gap:6px;min-height:80px;}
 .chat-msgs::-webkit-scrollbar{width:3px;}
 .chat-msgs::-webkit-scrollbar-thumb{background:var(--b0);}
-.cm{max-width:92%;padding:7px 11px;border-radius:8px;font-size:12px;line-height:1.6;}
-.cm.user{background:var(--brand-s);border:1px solid var(--brand-m);
-  color:var(--t0);align-self:flex-end;border-radius:8px 8px 2px 8px;}
-.cm.ai{background:var(--bg2);border:1px solid var(--b0);
-  color:var(--t1);align-self:flex-start;border-radius:2px 8px 8px 8px;}
-.cm.sys{background:var(--warn-s);border:1px solid rgba(184,155,114,.2);
-  color:var(--warn);align-self:center;font-size:10.5px;border-radius:6px;text-align:center;}
-.chat-typing{color:var(--t2);font-size:11px;padding:2px 16px;animation:pls 1s infinite;}
-.chat-row{display:flex;gap:7px;padding:9px 14px 13px;border-top:1px solid var(--b0);}
+.cm{max-width:94%;padding:6px 9px;font-size:11px;line-height:1.6;white-space:pre-wrap;}
+.cm.user{background:var(--brand-s);border:1px solid var(--brand-m);color:var(--t0);align-self:flex-end;}
+.cm.ai{background:var(--bg2);border:1px solid var(--b0);color:var(--t1);align-self:flex-start;}
+.cm.sys{background:var(--warn-s);border:1px solid rgba(210,153,34,.2);
+  color:var(--warn);align-self:center;font-size:9.5px;text-align:center;}
+.chat-typing{color:var(--t2);font-size:9px;padding:2px 10px;animation:pls 1s infinite;flex-shrink:0;}
+.chat-row{display:flex;gap:5px;padding:7px 8px;border-top:1px solid var(--b0);flex-shrink:0;}
 .chat-in{flex:1;background:var(--bg2);border:1px solid var(--b0);
-  border-radius:8px;padding:7px 11px;font-size:12px;color:var(--t0);
-  font-family:inherit;outline:none;resize:none;transition:border-color .2s;}
-.chat-in:focus{border-color:var(--ba);}
+  color:var(--t0);padding:5px 9px;font-size:10.5px;font-family:inherit;
+  outline:none;resize:none;transition:border-color .2s;}
+.chat-in:focus{border-color:var(--brand);}
 .chat-send{background:var(--brand);color:#fff;border:none;
-  padding:7px 13px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;
-  transition:.15s;align-self:flex-end;}
-.chat-send:hover{background:#5e6675;}
-.chat-send:disabled{opacity:.5;cursor:not-allowed;}
+  padding:5px 11px;cursor:pointer;font-size:10.5px;font-weight:700;transition:.15s;}
+.chat-send:hover{background:#4493e0;}
+.chat-send:disabled{opacity:.4;cursor:not-allowed;}
 
-/* ── MODAL ── */
+/* ARTICLES */
+.arts-body{padding:5px 8px;}
+.art-item{display:flex;align-items:center;gap:7px;padding:5px 3px;
+  cursor:pointer;transition:.15s;border-bottom:1px solid var(--b0);}
+.art-item:hover{background:var(--bg3);}
+.art-item:last-child{border-bottom:none;}
+.art-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex-shrink:0;}
+.art-title{flex:1;font-size:10px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.art-w{font-size:9px;color:var(--t2);flex-shrink:0;}
+
+/* MODAL */
 .modal-ov{display:none;position:fixed;inset:0;z-index:500;
-  background:rgba(47,42,36,.7);backdrop-filter:blur(8px);
-  align-items:flex-start;justify-content:center;padding:40px 24px;}
+  background:rgba(0,0,0,.75);backdrop-filter:blur(5px);
+  align-items:flex-start;justify-content:center;padding:36px 20px;}
 .modal-ov.open{display:flex;}
-.modal-box{background:var(--bg1);border:1px solid var(--b0);border-radius:14px;
+.modal-box{background:var(--bg1);border:1px solid var(--b0);
   width:100%;max-width:800px;max-height:85vh;display:flex;flex-direction:column;
-  box-shadow:0 20px 60px rgba(50,40,30,.18);animation:mIn .22s ease;}
-@keyframes mIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:none;}}
-.modal-hd{padding:13px 20px;border-bottom:1px solid var(--b0);
+  box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.modal-hd{padding:10px 16px;border-bottom:1px solid var(--b0);
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.modal-title{font-size:14px;font-weight:600;color:var(--t0);}
-.modal-close{width:27px;height:27px;border-radius:6px;background:var(--bg2);
-  border:1px solid var(--b0);color:var(--t2);cursor:pointer;font-size:13px;
+.modal-title{font-size:12px;font-weight:700;color:var(--t0);}
+.modal-close{width:24px;height:24px;background:var(--bg2);border:1px solid var(--b0);
+  color:var(--t2);cursor:pointer;font-size:12px;
   display:flex;align-items:center;justify-content:center;transition:.2s;}
-.modal-close:hover{border-color:var(--ba);color:var(--brand);}
-.modal-bd{flex:1;overflow-y:auto;padding:18px 22px;font-family:'SF Mono',Menlo,monospace;
-  font-size:12px;line-height:1.9;color:var(--t1);white-space:pre-wrap;word-break:break-word;}
+.modal-close:hover{border-color:var(--brand);color:var(--brand);}
+.modal-bd{flex:1;overflow-y:auto;padding:14px 18px;
+  font-family:'SF Mono',Menlo,monospace;font-size:11.5px;
+  line-height:1.9;color:var(--t1);white-space:pre-wrap;word-break:break-word;}
 .modal-bd::-webkit-scrollbar{width:4px;}
-.modal-bd::-webkit-scrollbar-thumb{background:var(--bg3);}
-.modal-ft{padding:8px 20px;border-top:1px solid var(--b0);
-  font-size:10.5px;color:var(--t2);flex-shrink:0;display:flex;align-items:center;gap:10px;}
-.devto-btn{background:var(--ok-s);color:var(--ok);border:1px solid rgba(124,154,126,.3);
-  padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;transition:.2s;}
-.devto-btn:hover{background:rgba(124,154,126,.2);}
-
-/* ── MISC ── */
-.badge{display:inline-flex;align-items:center;gap:3px;
-  padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;}
-.b-ok{background:var(--ok-s);color:var(--ok);}
-.b-warn{background:var(--warn-s);color:var(--warn);}
-.b-brand{background:var(--brand-s);color:var(--brand);}
-.empty{color:var(--t2);font-style:italic;font-size:12px;padding:8px 0;}
+.modal-bd::-webkit-scrollbar-thumb{background:var(--b0);}
+.modal-ft{padding:6px 16px;border-top:1px solid var(--b0);
+  font-size:9.5px;color:var(--t2);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.devto-btn{background:var(--ok-s);color:var(--ok);border:1px solid rgba(63,185,80,.3);
+  padding:3px 10px;font-size:9.5px;cursor:pointer;font-weight:700;transition:.2s;}
+.devto-btn:hover{background:rgba(63,185,80,.2);}
+.ch{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--b0);flex-shrink:0;}
+.ct{font-size:8.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--t2);display:flex;align-items:center;gap:5px;}
+.cdot2{width:5px;height:5px;border-radius:50%;}
 </style>
 </head>
 <body>
 
 <nav class="topbar">
-  <div class="tb-l">
-    <div class="logo">⬡ AI 無人工廠<span class="logo-sub">/ 圓桌協作室 · 11 Agents</span></div>
-    <div class="spill si" id="spill"><span class="sdot"></span><span class="stxt">載入中</span></div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="logo">⬡ AI FACTORY<span class="logo-v">v8 PIXEL OFFICE</span></div>
+    <div class="spill si" id="spill"><span class="sdot"></span><span class="stxt">INIT</span></div>
   </div>
   <div class="tb-r">
-    <span class="ts-t" id="ts">--</span>·<span class="cdt" id="cdt">5s</span>
-    <button class="rbtn" onclick="fetchNow()">⟳ 更新</button>
+    <span class="ts-t" id="ts">--</span>
+    <span style="color:var(--t2)">·</span>
+    <span class="cdt" id="cdt">5s</span>
+    <button class="rbtn" onclick="fetchNow()">⟳ REFRESH</button>
   </div>
 </nav>
 
-<div class="warn-strip" id="wstrip">
-  ⚠ <strong>待完成：</strong>CLAUDE.md 中仍有 PLACEHOLDER_WHOP_*，文章無法放銷售連結
-</div>
+<div class="warn-strip" id="wstrip">⚠ WHOP 連結尚未設定 — CLAUDE.md 含 PLACEHOLDER_WHOP_*</div>
 
 <div class="kpi-bar">
   <div class="kpi-c"><div class="kpi-v accent" id="k0">0</div><div class="kpi-l">今日產出</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k1">0</div><div class="kpi-l">文章總數</div></div>
-  <div class="kpi-c"><div class="kpi-v" id="k2">0</div>
-    <div class="kpi-l">今日 API 呼叫 <span title="需要 api-usage.json hook" style="color:var(--t2)">(?)</span></div></div>
-  <div class="kpi-c"><div class="kpi-v" id="k3">0</div><div class="kpi-l">累計 API 呼叫</div></div>
-  <div class="kpi-c"><div class="kpi-v" id="k4">--</div><div class="kpi-l">系統健康度</div></div>
-  <div class="kpi-c"><div class="kpi-v" id="k5" style="color:var(--t2);font-size:13px;">--</div>
-    <div class="kpi-l">模型</div></div>
+  <div class="kpi-c"><div class="kpi-v" id="k2">0</div><div class="kpi-l">API 今日</div></div>
+  <div class="kpi-c"><div class="kpi-v" id="k3">0</div><div class="kpi-l">API 累計</div></div>
+  <div class="kpi-c"><div class="kpi-v" id="k4">--</div><div class="kpi-l">系統健康</div></div>
+  <div class="kpi-c"><div class="kpi-v" id="k5" style="font-size:9px;">--</div><div class="kpi-l">模型</div></div>
 </div>
 
-<div class="main">
- <div class="left">
+<div class="workspace">
 
-  <!-- ══ 圓桌協作室 ══ -->
-  <div class="card">
-    <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--brand);animation:pls 2.5s infinite;"></span>
-        圓桌協作室</div>
-      <span id="flow-summary" style="font-size:10.5px;color:var(--t2)"></span>
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-head">▣ TEAM STATUS</div>
+    <div class="sb-filter">
+      <div class="sb-f active" onclick="setSbFilter('all',this)">ALL</div>
+      <div class="sb-f" onclick="setSbFilter('working',this)">WORK</div>
+      <div class="sb-f" onclick="setSbFilter('idle',this)">IDLE</div>
     </div>
-    <div class="council-wrap">
-      <!-- Council room rendered by JS -->
-      <div class="council-room" id="council-room">
-        <div class="council-table"></div>
-        <svg class="council-svg" id="council-svg"></svg>
-        <div class="council-center" id="council-center">
-          <div class="cc-logo">⬡</div>
-          <div class="cc-task" id="cc-task">載入中...</div>
-          <div class="cc-idle" id="cc-sub">—</div>
+    <div class="sb-list" id="sb-list"></div>
+    <div class="sb-health" id="sb-health"></div>
+  </div>
+
+  <!-- CENTER OFFICE CANVAS -->
+  <div class="office-wrap" id="office-wrap">
+    <div id="pixi-fb">PixiJS 載入中...<br><small style="color:var(--t2)">需要網路連線至 cdn.jsdelivr.net</small></div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="rp-tabs">
+      <div class="rp-tab active" onclick="switchTab('detail',this)">AGENT</div>
+      <div class="rp-tab" onclick="switchTab('feed',this)">活動</div>
+      <div class="rp-tab" onclick="switchTab('chat',this)">聊天</div>
+      <div class="rp-tab" onclick="switchTab('arts',this)">文章</div>
+    </div>
+    <div class="rp-pane active" id="pane-detail">
+      <div id="ad-inner">
+        <div style="padding:20px;text-align:center;color:var(--t2);font-size:10px;">
+          點擊左側房間查看 Agent 詳情
         </div>
-        <!-- seats injected by JS -->
-      </div>
-      <!-- Detail drawer: click a seat to expand -->
-      <div class="agent-detail" id="agent-detail"></div>
-    </div>
-  </div>
-
-  <!-- ══ 後勤支援團隊 ══ -->
-  <div class="card">
-    <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--pur)"></span>後勤支援團隊</div>
-      <span style="font-size:10px;color:var(--t2)">seo · 英文 · 中文 · 風格進化 · 知識庫</span>
-    </div>
-    <div class="support-row" id="support-row"></div>
-  </div>
-
-  <!-- ══ 知識庫進化 ══ -->
-  <div class="card">
-    <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--pur)"></span>知識庫進化循環</div>
-      <span style="font-size:10px;color:var(--t2)">feedback → style-updater → writing-style ↺</span>
-    </div>
-    <div class="cb">
-      <div class="learn-arrow">Reddit 互動 → feedback-collector → style-updater 更新 writing-style.md → 下一輪品質提升 ↺</div>
-      <div style="height:10px"></div>
-      <div class="know-grid" id="know-grid"></div>
-    </div>
-  </div>
-
-  <!-- ══ 診斷 + 主題 ══ -->
-  <div class="mid-row">
-    <div class="card">
-      <div class="ch">
-        <div class="ct"><span class="cdot" style="background:var(--warn)"></span>系統診斷</div>
-        <div id="dscore"></div>
-      </div>
-      <div class="cb">
-        <div class="dh" id="dhealth"></div>
-        <div class="dl" id="dlist"></div>
       </div>
     </div>
-    <div class="card">
-      <div class="ch"><div class="ct"><span class="cdot" style="background:var(--pur)"></span>主題表現</div></div>
-      <div class="cb"><div class="tg" id="tgrid"></div></div>
+    <div class="rp-pane" id="pane-feed">
+      <div class="ch" style="flex-shrink:0;">
+        <div class="ct"><span class="cdot2" style="background:var(--brand);animation:pls 2s infinite;"></span>活動流</div>
+      </div>
+      <div class="feed-body" id="feed-list" style="flex:1;overflow-y:auto;"></div>
     </div>
-  </div>
-
-  <!-- ══ 日誌 ══ -->
-  <div class="card">
-    <div class="ct" style="padding:12px 18px 0;"><span class="cdot" style="background:var(--t2)"></span>執行日誌</div>
-    <div class="log-tabs">
-      <div class="log-tab active" onclick="switchLog('cron',this)">Cron</div>
-      <div class="log-tab" onclick="switchLog('error',this)">錯誤</div>
-    </div>
-    <div class="log-bd" id="logbd"></div>
-  </div>
-
- </div><!-- /left -->
-
- <!-- ══ 右側：Feed + Chat ══ -->
- <div style="display:flex;flex-direction:column;gap:16px;">
-
-  <!-- Feed -->
-  <div class="card" style="flex:1;">
-    <div class="ch">
-      <div class="ct">
-        <span class="cdot" style="background:var(--brand);animation:pls 2s infinite;"></span>
-        團隊活動流
+    <div class="rp-pane" id="pane-chat">
+      <div class="ch" style="flex-shrink:0;">
+        <div class="ct"><span class="cdot2" style="background:var(--brand)"></span>控制台聊天</div>
+        <span style="font-size:8px;color:var(--t2)">系統感知</span>
+      </div>
+      <div class="chat-msgs" id="chat-msgs">
+        <div class="cm sys">AI 助手就緒 — 詢問系統狀態或設定問題</div>
+      </div>
+      <div id="chat-typing" class="chat-typing" style="display:none;">AI 回覆中...</div>
+      <div class="chat-row">
+        <textarea class="chat-in" id="chat-in" rows="2"
+          placeholder="目前狀態？如何設定 API？" onkeydown="chatKey(event)"></textarea>
+        <button class="chat-send" id="chat-btn" onclick="sendChat()">送出</button>
       </div>
     </div>
-    <div class="feed-scroll" id="feed-list"></div>
-  </div>
-
-  <!-- 文章庫 -->
-  <div class="card" style="flex-shrink:0;">
-    <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--ok)"></span>文章庫</div>
-      <span id="arts-count" style="font-size:10.5px;color:var(--t2)"></span>
-    </div>
-    <div style="padding:0 14px 12px;display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto;" id="arts-list"></div>
-  </div>
-
-  <!-- Chat -->
-  <div class="card" style="flex-shrink:0;">
-    <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--brand)"></span>控制台對話</div>
-      <span style="font-size:10px;color:var(--t2)">具備系統狀態感知</span>
-    </div>
-    <div class="chat-msgs" id="chat-msgs">
-      <div class="cm sys">智能助手已就緒 — 可詢問系統狀態、設定問題、流程說明</div>
-    </div>
-    <div id="chat-typing" class="chat-typing" style="display:none;">AI 回覆中...</div>
-    <div class="chat-row">
-      <textarea class="chat-in" id="chat-in" rows="2"
-        placeholder="例：目前系統狀態？如何清 Cron？為何沒有 API 呼叫？"
-        onkeydown="chatKey(event)"></textarea>
-      <button class="chat-send" id="chat-btn" onclick="sendChat()">送出</button>
+    <div class="rp-pane" id="pane-arts">
+      <div class="ch" style="flex-shrink:0;">
+        <div class="ct"><span class="cdot2" style="background:var(--ok)"></span>文章庫</div>
+        <span id="arts-count" style="font-size:9px;color:var(--t2)"></span>
+      </div>
+      <div class="arts-body" id="arts-list" style="flex:1;overflow-y:auto;"></div>
     </div>
   </div>
 
- </div>
-</div><!-- /main -->
+</div><!-- /workspace -->
 
 <!-- MODAL -->
 <div class="modal-ov" id="modal" onclick="closeModal(event)">
@@ -984,425 +788,435 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
     <div class="modal-bd" id="mbody">載入中...</div>
     <div class="modal-ft">
       <span id="mfoot" style="flex:1;"></span>
-      <button class="devto-btn" id="devto-btn" onclick="postToDevto()">發布到 dev.to 草稿</button>
+      <button class="devto-btn" id="devto-btn" onclick="postToDevto()">→ dev.to 草稿</button>
     </div>
   </div>
 </div>
 
 <script>
-let currentLog='cron', countdown=5, timer, lastData=null, currentArticleName='';
-let activeDetailId=null;
+/* ─── GLOBALS ─── */
+let countdown=5,timer,lastData=null,currentArticleName='';
+let sbFilter='all',selectedId=null;
+let pixiApp=null,roomC={},agentD={},fileAnims=[],prevWId=null;
+const bubTmr={};
 
-const CAT_C={A:'#727A8C',B:'#8B85A0',C:'#7C9A7E',D:'#8193A8'};
-const CAT_L={A:'電容/壓力感測',B:'手勢/彎曲感測',C:'互動設計',D:'IoT/ESP32'};
-const FEED_C={'writer':'#727A8C','researcher':'#8193A8','reviewer':'#8B85A0',
-  'poster':'#7C9A7E','quality-check':'#B89B72','topic-selector':'#727A8C',
-  'system':'#8A837A','feedback':'#8B85A0'};
+/* ─── PIPELINE META (mirrors Python PIPELINE_FLOW) ─── */
+const FM=[
+  {id:'researcher',order:1,label:'研究員',icon:'◎',phase:'探索',desc:'爬蟲 4 個 subreddit，評估需求，找 Amazon 聯盟商品'},
+  {id:'topic-selector',order:2,label:'選題',icon:'◈',phase:'策略',desc:'合併需求信號，決定唯一下一篇主題，避免重複'},
+  {id:'writer',order:3,label:'中文初稿',icon:'✦',phase:'生產',desc:'產出中文教學文章，植入 Whop 銷售連結'},
+  {id:'seo-agent',order:4,label:'SEO',icon:'S',phase:'生產',desc:'產出 3 個標題候選，優化關鍵字位置'},
+  {id:'english-writer',order:5,label:'英文寫手',icon:'E',phase:'生產',desc:'Reddit 摘要版 + Medium 完整版'},
+  {id:'chinese-writer',order:6,label:'中文詮釋',icon:'中',phase:'生產',desc:'詮釋為台灣 Maker 中文版'},
+  {id:'reviewer',order:7,label:'審稿',icon:'◉',phase:'品管',desc:'5 道自動關卡 + 邏輯審查'},
+  {id:'poster',order:8,label:'發文',icon:'◆',phase:'發布',desc:'發布到 Reddit / Medium / dev.to'},
+  {id:'feedback-collector',order:9,label:'回報收集',icon:'F',phase:'回饋',desc:'發文後 24h 收集 upvotes/comments'},
+  {id:'style-updater',order:10,label:'風格進化',icon:'↺',phase:'進化',desc:'根據表現更新 writing-style.md'},
+  {id:'knowledge-subagent',order:11,label:'知識庫',icon:'K',phase:'進化',desc:'任務結束前寫入知識庫'},
+];
+const FMI={};FM.forEach(a=>FMI[a.id]=a);
 
-// ── Council layout: 6 core agents around round table ──
-const CORE_IDS=['researcher','topic-selector','writer','reviewer','poster','feedback-collector'];
-const SUPPORT_IDS=['seo-agent','english-writer','chinese-writer','style-updater','knowledge-subagent'];
+const PHEX={'探索':0x1F6FEB,'策略':0x8957E5,'生產':0x388BFD,'品管':0xD29922,'發布':0x3FB950,'回饋':0xD29922,'進化':0xBC8CFF};
+const PCSS={'探索':'#1F6FEB','策略':'#8957E5','生產':'#388BFD','品管':'#D29922','發布':'#3FB950','回饋':'#D29922','進化':'#BC8CFF'};
+const SHEX={working:0x3FB950,waiting:0xD29922,idle:0x484F58,done:0x3FB950};
+const FEDC={writer:'#388BFD',researcher:'#1F6FEB',reviewer:'#D29922',poster:'#3FB950','quality-check':'#D29922','topic-selector':'#8957E5',system:'#8B949E',feedback:'#BC8CFF'};
+const BLNS={
+  researcher:['爬蟲中...','分析需求...','找到商品！'],
+  'topic-selector':['比較主題...','避免重複...','已選定！'],
+  writer:['寫作中...','加入範例碼...','完稿！','植入連結...'],
+  'seo-agent':['優化標題...','SEO完成！'],
+  'english-writer':['翻譯中...','英文稿完成！'],
+  'chinese-writer':['詮釋中...','中文稿完成！'],
+  reviewer:['審核中...','品質檢查...','通過 ✓'],
+  poster:['準備發文...','發文成功！'],
+  'feedback-collector':['收集回饋...','數據更新！'],
+  'style-updater':['分析風格...','進化完成！'],
+  'knowledge-subagent':['記錄中...','完成！'],
+};
 
-// Council room: 480×460, center (240,230), orbit radius 170px
-// Angles (clock): 0°=top, 60°=upper-right, 120°=lower-right, 180°=bottom, 240°=lower-left, 300°=upper-left
-const CX=240, CY=230, R=170;
-function seatPos(idx){
-  const a=(idx*60-90)*Math.PI/180;
-  return {x:Math.round(CX+R*Math.cos(a)), y:Math.round(CY+R*Math.sin(a))};
+/* ─── ROOM LAYOUT ─── */
+const CIDS=['researcher','topic-selector','writer','reviewer','poster','feedback-collector'];
+const RLYT={'researcher':{c:0,r:0},'topic-selector':{c:1,r:0},'writer':{c:0,r:1},'reviewer':{c:1,r:1},'poster':{c:0,r:2},'feedback-collector':{c:1,r:2}};
+const SIDS=['seo-agent','english-writer','chinese-writer','style-updater','knowledge-subagent'];
+const RW=214,RH=120,RG=12,RP=10,SW=82,SH=60,SG=7;
+const SY=RP+3*(RH+RG)+6;
+const CW=RP*2+RW*2+RG, CH=SY+SH+RP;
+
+function rOrg(id){
+  if(RLYT[id]){const {c,r}=RLYT[id];return{x:RP+c*(RW+RG),y:RP+r*(RH+RG)};}
+  const si=SIDS.indexOf(id);if(si>=0)return{x:RP+si*(SW+SG),y:SY};
+  return null;
 }
-// PHASE → accent color
-const PHASE_COL={'探索':'#8193A8','策略':'#8B85A0','生產':'#727A8C',
-  '品管':'#B89B72','發布':'#7C9A7E','回饋':'#B89B72','進化':'#8B85A0'};
+function rCtr(id){
+  const o=rOrg(id);if(!o)return null;
+  const s=SIDS.includes(id);return{x:o.x+(s?SW:RW)/2,y:o.y+(s?SH:RH)/2};
+}
 
+/* ─── PIXI INIT ─── */
+function initPixi(){
+  if(pixiApp)return;
+  if(typeof PIXI==='undefined'){
+    document.getElementById('pixi-fb').innerHTML='<span style="color:var(--err)">PixiJS 載入失敗</span><br><small>請檢查網路或改用純 CSS 版</small>';
+    return;
+  }
+  const fb=document.getElementById('pixi-fb');if(fb)fb.remove();
+  pixiApp=new PIXI.Application({width:CW,height:CH,backgroundColor:0x0D1117,antialias:false,resolution:1});
+  pixiApp.view.style.imageRendering='pixelated';
+  document.getElementById('office-wrap').appendChild(pixiApp.view);
+  buildRooms(); buildAgents();
+  pixiApp.ticker.add(tick);
+}
+
+/* ─── BUILD ROOMS ─── */
+function buildRooms(){
+  Object.values(roomC).forEach(c=>pixiApp.stage.removeChild(c));roomC={};
+  CIDS.forEach(id=>mkRoom(id,RW,RH,false));
+  SIDS.forEach(id=>mkRoom(id,SW,SH,true));
+}
+function mkRoom(id,w,h,isS){
+  const m=FMI[id];if(!m)return;
+  const o=rOrg(id);if(!o)return;
+  const col=PHEX[m.phase]||0x58A6FF;
+  const c=new PIXI.Container();c.x=o.x;c.y=o.y;
+  c.interactive=true;c.cursor='pointer';
+  c.on('pointerdown',()=>onRC(id));
+  c.on('pointerover',()=>hlRoom(c,true));
+  c.on('pointerout',()=>hlRoom(c,false));
+
+  const bg=new PIXI.Graphics();
+  bg.beginFill(0x161B22);bg.drawRect(0,0,w,h);bg.endFill();
+  for(let ty=0;ty<h;ty+=4)for(let tx=0;tx<w;tx+=4){
+    if((Math.floor(tx/4)+Math.floor(ty/4))%2===0){bg.beginFill(0x1A2030,.45);bg.drawRect(tx,ty,4,4);bg.endFill();}
+  }
+  c.addChild(bg);
+
+  const bdr=new PIXI.Graphics();
+  bdr.lineStyle(2,col,.75);bdr.drawRect(0,0,w,h);
+  c.addChild(bdr);c._bdr=bdr;c._col=col;c._w=w;c._h=h;c._hl=false;
+
+  if(!isS){
+    const dk=new PIXI.Graphics();
+    dk.beginFill(0x3D2B1F);dk.drawRect(w/2-22,h-38,44,13);dk.endFill();
+    dk.beginFill(0x2A1C10);dk.drawRect(w/2-18,h-25,6,9);dk.drawRect(w/2+12,h-25,6,9);dk.endFill();
+    c.addChild(dk);
+  }
+  const lbl=new PIXI.Text(m.label,{fontFamily:'Courier New,monospace',fontSize:isS?7:8,fill:col,fontWeight:'bold'});
+  lbl.x=5;lbl.y=5;c.addChild(lbl);
+  const ord=new PIXI.Text('#'+m.order,{fontFamily:'Courier New,monospace',fontSize:7,fill:0x484F58});
+  ord.x=w-ord.width-5;ord.y=5;c.addChild(ord);
+
+  pixiApp.stage.addChild(c);roomC[id]=c;
+}
+function hlRoom(c,on){
+  if(!c._bdr)return;c._hl=on||c._sel;
+  c._bdr.clear();
+  const col=c._hl?0xCCDDFF:c._col;
+  const lw=c._hl?2:1,alpha=c._hl?1:.75;
+  c._bdr.lineStyle(lw,col,alpha);c._bdr.drawRect(0,0,c._w,c._h);
+}
+function selRoom(id){
+  Object.entries(roomC).forEach(([rid,rc])=>{
+    rc._sel=(rid===id);hlRoom(rc,false);
+  });
+}
+
+/* ─── BUILD AGENTS ─── */
+function buildAgents(){
+  Object.values(agentD).forEach(d=>{if(d.c.parent)d.c.parent.removeChild(d.c);});agentD={};
+  [...CIDS,...SIDS].forEach(id=>mkAgent(id));
+}
+function mkAgent(id){
+  const m=FMI[id];if(!m)return;
+  const rc=roomC[id];if(!rc)return;
+  const isS=SIDS.includes(id);
+  const col=PHEX[m.phase]||0x58A6FF;
+  const dk=Math.floor(col*.55);
+  const c=new PIXI.Container();
+  const g=new PIXI.Graphics();
+  if(isS){
+    g.beginFill(col);g.drawCircle(0,-11,5);g.endFill();
+    g.beginFill(dk);g.drawRect(-3,-6,6,8);g.endFill();
+  } else {
+    g.beginFill(col);g.drawCircle(0,-19,7);g.endFill();
+    g.beginFill(dk);g.drawRect(-5,-12,10,12);g.endFill();
+    g.beginFill(0x30363D);g.drawRect(-4,0,3,6);g.drawRect(1,0,3,6);g.endFill();
+  }
+  c.addChild(g);
+  const ico=new PIXI.Text(m.icon,{fontFamily:'monospace',fontSize:isS?8:10,fill:0xE6EDF3});
+  ico.anchor.set(.5);ico.y=isS?-23:-34;c.addChild(ico);
+  const dot=new PIXI.Graphics();c.addChild(dot);c._dot=dot;
+  const bub=new PIXI.Container();bub.visible=false;
+  bub._bg=new PIXI.Graphics();bub._tx=new PIXI.Text('...',{fontFamily:'Courier New,monospace',fontSize:isS?7:8,fill:0xE6EDF3,wordWrap:true,wordWrapWidth:isS?66:84});
+  bub.addChild(bub._bg);bub.addChild(bub._tx);
+  bub.y=isS?-36:-50;c.addChild(bub);c._bub=bub;
+  const w=isS?SW:RW,h=isS?SH:RH;
+  c.x=w/2;c.y=isS?h-15:h-25;c._by=c.y;
+  rc.addChild(c);
+  agentD[id]={c,dot,bub,_st:'idle',_col:col,_isS:isS};
+  updDot(id,'idle');
+}
+function updDot(id,st){
+  const d=agentD[id];if(!d)return;
+  const col=SHEX[st]||0x484F58,isS=d._isS;
+  d.dot.clear();d.dot.beginFill(col);
+  d.dot.drawCircle(isS?6:9,isS?-17:-25,4);d.dot.endFill();
+}
+
+/* ─── ANIMATION TICKER ─── */
+function tick(){
+  const t=Date.now();
+  Object.entries(agentD).forEach(([id,d])=>{
+    if(d._st==='working'){d.c.y=d.c._by+Math.sin(t*.0028)*2.5;d.c.alpha=1;}
+    else if(d._st==='waiting'){d.c.alpha=.45+Math.abs(Math.sin(t*.0016))*.45;d.c.y=d.c._by;}
+    else{d.c.alpha=.45;d.c.y=d.c._by;}
+  });
+  fileAnims=fileAnims.filter(a=>{
+    a.t+=16.67;const p=Math.min(a.t/900,1);
+    const e=p<.5?2*p*p:-1+(4-2*p)*p;
+    const cpx=(a.sx+a.ex)/2,cpy=Math.min(a.sy,a.ey)-52;
+    a.g.x=(1-e)*(1-e)*a.sx+2*(1-e)*e*cpx+e*e*a.ex;
+    a.g.y=(1-e)*(1-e)*a.sy+2*(1-e)*e*cpy+e*e*a.ey;
+    a.g.alpha=p>.75?(1-p)/.25:1;a.g.rotation+=.06;
+    if(p>=1){pixiApp.stage.removeChild(a.g);return false;}return true;
+  });
+}
+function spawnFile(sx,sy,ex,ey){
+  if(!pixiApp)return;
+  const g=new PIXI.Graphics();
+  g.beginFill(0x58A6FF,.9);g.drawRect(-5,-6,10,12);g.endFill();
+  g.lineStyle(1,0xE6EDF3,.4);g.moveTo(2,-6);g.lineTo(5,-3);g.lineTo(5,-6);
+  g.x=sx;g.y=sy;pixiApp.stage.addChild(g);
+  fileAnims.push({g,sx,sy,ex,ey,t:0});
+}
+
+/* ─── BUBBLE MANAGEMENT ─── */
+function setBub(id,txt){
+  const d=agentD[id];if(!d)return;
+  const b=d.bub,isS=d._isS;
+  b._tx.text=txt;
+  const tw=Math.max(b._tx.width,16)+10,th=b._tx.height+8;
+  b._bg.clear();
+  b._bg.beginFill(0x1C2333,.97);b._bg.lineStyle(1,d._col||0x58A6FF,.8);
+  b._bg.drawRoundedRect(-tw/2,-th,tw,th,3);b._bg.endFill();
+  b._bg.beginFill(0x1C2333,.97);
+  b._bg.moveTo(-4,0);b._bg.lineTo(0,6);b._bg.lineTo(4,0);b._bg.endFill();
+  b._tx.x=-tw/2+5;b._tx.y=-th+4;b.visible=true;
+}
+function startBub(id){
+  if(bubTmr[id])return;
+  const ls=BLNS[id]||['工作中...'];let i=0;setBub(id,ls[0]);
+  bubTmr[id]=setInterval(()=>{
+    if(agentD[id]?._st!=='working'){stopBub(id);return;}
+    i=(i+1)%ls.length;setBub(id,ls[i]);
+  },2200);
+}
+function stopBub(id){
+  if(bubTmr[id]){clearInterval(bubTmr[id]);delete bubTmr[id];}
+  const d=agentD[id];if(d)d.bub.visible=false;
+}
+
+/* ─── UPDATE OFFICE (on each data refresh) ─── */
+function updOffice(flow,pipe){
+  if(!pixiApp)return;
+  const bi={};(flow||[]).forEach(a=>bi[a.id]=a);
+  const nw=(flow||[]).find(a=>a.status==='working');
+  const nwId=nw?nw.id:null;
+  if(nwId&&prevWId&&nwId!==prevWId){
+    const fo=rCtr(prevWId),to=rCtr(nwId);
+    const frc=roomC[prevWId],trc=roomC[nwId];
+    if(fo&&to&&frc&&trc) spawnFile(fo.x+frc.x,fo.y+frc.y,to.x+trc.x,to.y+trc.y);
+  }
+  prevWId=nwId;
+  (flow||[]).forEach(a=>{
+    const d=agentD[a.id];if(!d)return;
+    d._st=a.status;updDot(a.id,a.status);
+    if(a.status==='working')startBub(a.id);else stopBub(a.id);
+  });
+}
+function onRC(id){
+  selectedId=id;selRoom(id);
+  document.querySelectorAll('.rp-tab').forEach((t,i)=>{t.classList.toggle('active',i===0);});
+  document.querySelectorAll('.rp-pane').forEach((p,i)=>{p.classList.toggle('active',i===0);});
+  document.querySelectorAll('.sb-agent').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
+  if(lastData)showAD(id,lastData.flow||[]);
+}
+
+/* ─── FETCH & RENDER ─── */
 async function fetchNow(){
-  clearInterval(timer); countdown=5;
-  try{
-    const r=await fetch('/api/status'); const d=await r.json();
-    lastData=d; render(d);
-  }catch(e){ setPill('se','連線失敗'); }
+  clearInterval(timer);countdown=5;
+  try{const r=await fetch('/api/status');const d=await r.json();lastData=d;render(d);}
+  catch(e){setPill('se','OFFLINE');}
   startTimer();
 }
 function startTimer(){
   clearInterval(timer);
-  timer=setInterval(()=>{
-    countdown--;
-    const el=document.getElementById('cdt');
-    if(el) el.textContent=countdown+'s';
-    if(countdown<=0) fetchNow();
-  },1000);
+  timer=setInterval(()=>{countdown--;const e=document.getElementById('cdt');if(e)e.textContent=countdown+'s';if(countdown<=0)fetchNow();},1000);
 }
-
 function render(d){
   document.getElementById('ts').textContent=d.ts;
   document.getElementById('wstrip').style.display=d.has_placeholder?'flex':'none';
-  const sm={idle:'si',running:'sr',error:'se'};
-  const tx={idle:'待機中',running:'執行中',error:'有錯誤'};
+  const sm={idle:'si',running:'sr',error:'se'},tx={idle:'IDLE',running:'RUNNING',error:'ERROR'};
   setPill(sm[d.state]||'si',tx[d.state]||d.state);
-  document.getElementById('k0').textContent=d.pipeline.count||0;
+  document.getElementById('k0').textContent=d.pipeline?.count||0;
   document.getElementById('k1').textContent=d.article_count||0;
-  document.getElementById('k2').textContent=d.usage.today||0;
-  document.getElementById('k3').textContent=d.usage.total||0;
-  const sc=d.diag?.score??100;
-  const se=document.getElementById('k4');
-  se.textContent=sc+'%';
-  se.className='kpi-v '+(sc>=85?'ok':sc>=60?'warn':'err');
-  document.getElementById('k5').textContent=d.api.model;
-
-  const flow=d.flow||[];
-  const wc=flow.filter(a=>a.status==='working').length;
-  const wa=flow.filter(a=>a.status==='waiting').length;
-  document.getElementById('flow-summary').textContent=
-    wc>0?`${wc} 個工作中`:wa>0?`${wa} 個等待中`:'全員待命';
-
-  renderCouncil(flow, d.pipeline||{});
-  renderSupport(flow);
-  renderKnowledge(d.knowledge||[]);
-  renderDiag(d.diag||{});
-  renderTopics(d.perf||{});
+  document.getElementById('k2').textContent=d.usage?.today||0;
+  document.getElementById('k3').textContent=d.usage?.total||0;
+  const sc=d.diag?.score??100,se=document.getElementById('k4');
+  se.textContent=sc+'%';se.className='kpi-v '+(sc>=85?'ok':sc>=60?'warn':'err');
+  document.getElementById('k5').textContent=(d.api?.model||'--').slice(0,18);
+  if(!pixiApp)initPixi();
+  updOffice(d.flow||[],d.pipeline||{});
+  renderSB(d.flow||[],d.diag||{});
   renderFeed(d.feed||[]);
-  renderArticles(d.articles||[]);
-  renderLog(d);
+  renderArts(d.articles||[]);
+  if(selectedId)showAD(selectedId,d.flow||[]);
+}
+function setPill(cls,lbl){
+  const el=document.getElementById('spill');el.className='spill '+cls;
+  el.querySelector('.stxt').textContent=lbl;
 }
 
-function setPill(cls,label){
-  const el=document.getElementById('spill');
-  el.className='spill '+cls;
-  el.querySelector('.stxt').textContent=label;
+/* ─── SIDEBAR ─── */
+function setSbFilter(f,btn){
+  sbFilter=f;document.querySelectorAll('.sb-f').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');if(lastData)renderSB(lastData.flow||[],lastData.diag||{});
 }
-
-// ── Council Room ──────────────────────────────────
-function renderCouncil(flow, pipeline){
-  const room=document.getElementById('council-room');
-  const svg=document.getElementById('council-svg');
-
-  // Build lookup by id
-  const byId={};
-  (flow||[]).forEach(a=>byId[a.id]=a);
-
-  // Center display
-  const art=pipeline.article;
-  const taskEl=document.getElementById('cc-task');
-  const subEl=document.getElementById('cc-sub');
-  if(art){
-    taskEl.textContent=(art.title||'進行中').slice(0,28);
-    const active=flow.find(a=>a.status==='working');
-    subEl.className='cc-active';
-    subEl.textContent=active?(active.label+' · 工作中'):'任務完成';
-  } else {
-    taskEl.textContent='尚未執行任務';
-    subEl.className='cc-idle';
-    subEl.textContent='等待 run.sh 啟動';
-  }
-
-  // Remove old seats (keep table + svg + center)
-  room.querySelectorAll('.agent-seat').forEach(el=>el.remove());
-
-  // Draw SVG lines from center to each seat
-  let svgHtml='';
-  CORE_IDS.forEach((id,i)=>{
-    const a=byId[id]; if(!a) return;
-    const pos=seatPos(i);
-    const isWorking=a.status==='working';
-    const isDone=a.status==='done'||(flow.indexOf(a)<flow.findIndex(x=>x.status==='working')&&a.status==='idle');
-    const col=isWorking?'rgba(114,122,140,0.5)':isDone?'rgba(124,154,126,0.3)':'rgba(216,210,199,0.6)';
-    const w=isWorking?'2':'1';
-    svgHtml+=`<line x1="${CX}" y1="${CY}" x2="${pos.x}" y2="${pos.y}"
-      stroke="${col}" stroke-width="${w}" stroke-dasharray="${isWorking?'':'4 4'}"/>`;
-    // small file transfer dot midpoint
-    if(isWorking){
-      const mx=(CX+pos.x)/2, my=(CY+pos.y)/2;
-      svgHtml+=`<circle cx="${mx}" cy="${my}" r="3" fill="var(--brand)" opacity="0.5">
-        <animate attributeName="r" values="2;4;2" dur="1.4s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1.4s" repeatCount="indefinite"/>
-      </circle>`;
-    }
+function renderSB(flow,diag){
+  const bi={};(flow||[]).forEach(a=>bi[a.id]=a);
+  const vis=FM.filter(m=>{
+    const a=bi[m.id];
+    if(sbFilter==='working')return a?.status==='working';
+    if(sbFilter==='idle')return a?.status!=='working';
+    return true;
   });
-  svg.innerHTML=svgHtml;
-
-  // Render seats
-  CORE_IDS.forEach((id,i)=>{
-    const a=byId[id];
-    if(!a) return;
-    const pos=seatPos(i);
-    const st=a.status||'idle';
-    const pcol=PHASE_COL[a.phase]||'#8A837A';
-    const seat=document.createElement('div');
-    seat.className=`agent-seat ${st}`;
-    seat.id='seat-'+id;
-    seat.style.left=pos.x+'px';
-    seat.style.top=pos.y+'px';
-    seat.onclick=()=>toggleDetail(id, a);
-    seat.innerHTML=`
-      <div class="seat-avatar" style="${st==='working'?'border-color:'+pcol+';background:'+pcol+'18':''}">
-        <span style="font-size:18px;line-height:1;">${esc(a.icon)}</span>
-        <div class="seat-dot ${st}"></div>
-      </div>
-      <div class="seat-name">${esc(a.label)}</div>
-      <span class="seat-badge ${st}">${esc(a.status_txt)}</span>
-      <div class="seat-phase" style="color:${pcol}">${esc(a.phase)}</div>`;
-    room.appendChild(seat);
-  });
+  document.getElementById('sb-list').innerHTML=vis.map(m=>{
+    const a=bi[m.id]||{},st=a.status||'idle',pc=PCSS[m.phase]||'#58A6FF';
+    const sel=m.id===selectedId?' selected':'';
+    return '<div class="sb-agent '+st+sel+'" data-id="'+esc(m.id)+'" onclick="onRC(\''+esc(m.id)+'\')">'
+      +'<div class="sb-avatar" style="border-color:'+pc+'40;color:'+pc+'">'+esc(m.icon)+'</div>'
+      +'<div class="sb-info"><div class="sb-name">'+esc(m.label.toUpperCase())+'</div>'
+      +'<span class="sb-badge '+st+'">'+esc((a.status_txt||st).toUpperCase())+'</span></div></div>';
+  }).join('');
+  const h=diag.health||[];
+  document.getElementById('sb-health').innerHTML=h.map(it=>'<div class="sb-hr"><span class="sb-hl">'+esc(it.name)+'</span><span class="sb-hv '+esc(it.status)+'">'+esc(it.val)+'</span></div>').join('')
+    +'<div class="sb-hr" style="margin-top:4px;"><span class="sb-hl">健康度</span>'
+    +'<span class="sb-hv '+(diag.score>=85?'ok':diag.score>=60?'warn':'err')+'">'+esc(String(diag.score??'--'))+'%</span></div>';
 }
 
-function toggleDetail(id, agent){
-  const drawer=document.getElementById('agent-detail');
-  if(activeDetailId===id){
-    drawer.classList.remove('open');
-    activeDetailId=null;
-    return;
-  }
-  activeDetailId=id;
-  const pcol=PHASE_COL[agent.phase]||'#8A837A';
-  const stBadge=`<span class="seat-badge ${agent.status}" style="font-size:10px;padding:2px 9px;">${esc(agent.status_txt)}</span>`;
-  const reads=(agent.reads_stat||[]).map(r=>fileItem(r.path,r.stat)).join('')||'<span class="empty">—</span>';
-  const writes=(agent.writes_stat||[]).map(w=>fileItem(w.path,w.stat)).join('')||'<span class="empty">—</span>';
-  const skills=(agent.skills_avail||[]).map(s=>`<span class="pill ${s.ok?'skill-ok':'skill-miss'}">${esc(s.name)}</span>`).join('')||'<span class="empty">—</span>';
-  const hooks=(agent.hooks_avail||[]).map(h=>`<span class="pill ${h.ok?'hook-ok':'hook-miss'}">${esc(h.name)}</span>`).join('')||'<span class="empty">—</span>';
-  drawer.innerHTML=`
-    <div class="ad-title">
-      <span style="font-size:18px">${esc(agent.icon)}</span>
-      <span>${esc(agent.label)}</span>
-      <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${pcol}18;color:${pcol}">${esc(agent.phase)}</span>
-      ${stBadge}
-      <span style="flex:1"></span>
-      <button onclick="closeDetail()" style="background:none;border:none;cursor:pointer;color:var(--t2);font-size:13px;">✕</button>
-    </div>
-    <div style="font-size:11px;color:var(--t2);margin-bottom:10px;">${esc(agent.desc||'')}</div>
-    <div class="ad-grid">
-      <div><div class="ad-sec">讀取 Input</div>${reads}</div>
-      <div><div class="ad-sec">寫入 Output</div>${writes}</div>
-      <div><div class="ad-sec">Skills (${(agent.skills_avail||[]).length})</div><div class="pill-list">${skills}</div></div>
-      <div><div class="ad-sec">Hooks (${(agent.hooks_avail||[]).length})</div><div class="pill-list">${hooks}</div></div>
-    </div>`;
-  drawer.classList.add('open');
+/* ─── AGENT DETAIL ─── */
+function showAD(id,flow){
+  const a=(flow||[]).find(x=>x.id===id);if(!a)return;
+  const pc=PCSS[a.phase]||'#58A6FF';
+  const sm={working:'b-ok',waiting:'b-warn',idle:'b-info',done:'b-ok'};
+  const r=(a.reads_stat||[]).map(x=>fih(x.path,x.stat)).join('');
+  const w=(a.writes_stat||[]).map(x=>fih(x.path,x.stat)).join('');
+  const sk=(a.skills_avail||[]).map(s=>'<span class="pill '+(s.ok?'sk':'sk-x')+'">'+esc(s.name)+'</span>').join('');
+  const hk=(a.hooks_avail||[]).map(h=>'<span class="pill '+(h.ok?'hk':'hk-x')+'">'+esc(h.name)+'</span>').join('');
+  document.getElementById('ad-inner').innerHTML=
+    '<div class="ad-head"><div class="ad-icon" style="border-color:'+pc+'40;color:'+pc+'">'+esc(a.icon)+'</div>'
+    +'<div><div class="ad-name">'+esc(a.label)+'</div>'
+    +'<div class="ad-badges"><span class="badge b-brand" style="color:'+pc+';background:'+pc+'18">'+esc(a.phase)+'</span>'
+    +'<span class="badge '+(sm[a.status]||'b-info')+'">'+esc(a.status_txt||a.status)+'</span>'
+    +'<span class="badge" style="background:var(--bg3);color:var(--t2)">#'+esc(String(a.order||''))+'</span>'
+    +'</div></div></div>'
+    +'<div class="ad-desc">'+esc(a.desc||'')+'</div>'
+    +'<div class="ad-sec"><div class="ad-sl">INPUT</div>'+(r||'<div class="empty">—</div>')+'</div>'
+    +'<div class="ad-sec"><div class="ad-sl">OUTPUT</div>'+(w||'<div class="empty">—</div>')+'</div>'
+    +'<div class="ad-sec"><div class="ad-sl">SKILLS ('+esc(String((a.skills_avail||[]).length))+')</div><div class="pills">'+(sk||'<div class="empty">—</div>')+'</div></div>'
+    +'<div class="ad-sec"><div class="ad-sl">HOOKS ('+esc(String((a.hooks_avail||[]).length))+')</div><div class="pills">'+(hk||'<div class="empty">—</div>')+'</div></div>';
 }
-function closeDetail(){
-  document.getElementById('agent-detail').classList.remove('open');
-  activeDetailId=null;
-}
-
-function fileItem(path,stat){
-  const ok=stat&&stat.ok;
-  const short=path.split('/').pop().replace(/（.*?）/g,'');
+function fih(path,stat){
+  const ok=stat&&stat.ok,sh=path.split('/').pop().replace(/（.*?）/g,'');
   const age=ok?(stat.age<1440?stat.age+'m前':Math.floor(stat.age/1440)+'d前'):'';
-  return `<div class="file-item">
-    <div class="file-dot ${ok?'ok':'miss'}"></div>
-    <span class="file-path" title="${esc(path)}">${esc(short)}</span>
-    <span class="file-age">${age}</span>
-  </div>`;
+  return '<div class="file-item"><div class="file-dot '+(ok?'ok':'miss')+'"></div>'
+    +'<span class="file-path" title="'+esc(path)+'">'+esc(sh)+'</span>'
+    +'<span class="file-age">'+esc(age)+'</span></div>';
 }
 
-// ── Support Team ──────────────────────────────────
-function renderSupport(flow){
-  const byId={};
-  (flow||[]).forEach(a=>byId[a.id]=a);
-  const row=document.getElementById('support-row');
-  row.innerHTML=SUPPORT_IDS.map(id=>{
-    const a=byId[id]; if(!a) return '';
-    const st=a.status||'idle';
-    const pcol=PHASE_COL[a.phase]||'#8A837A';
-    return `<div class="support-item ${st}" onclick="toggleDetail('${esc(id)}',${JSON.stringify(a).replace(/"/g,'&quot;')})">
-      <div class="support-icon ${st}">${esc(a.icon)}</div>
-      <div class="support-name">${esc(a.label)}</div>
-      <div class="support-phase" style="color:${pcol}">${esc(a.phase)}</div>
-      <span class="support-sbadge ${st}">${esc(a.status_txt)}</span>
-    </div>`;
-  }).join('');
-}
-
-// ── Articles ──────────────────────────────────────
-function renderArticles(arts){
-  const el=document.getElementById('arts-list');
-  const cnt=document.getElementById('arts-count');
-  if(!arts||!arts.length){
-    el.innerHTML='<div class="empty" style="padding:8px 4px;">尚無文章</div>';
-    if(cnt) cnt.textContent='';
-    return;
-  }
-  if(cnt) cnt.textContent=arts.length+' 篇';
-  el.innerHTML=arts.slice(0,12).map(a=>`
-    <div onclick="openArticle('${esc(a.name)}','${esc(a.title)}')"
-      style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;
-        border-radius:6px;transition:.15s;"
-      onmouseover="this.style.background='var(--bg3)'"
-      onmouseout="this.style.background=''">
-      <span style="font-size:9.5px;color:var(--ok);flex-shrink:0;">●</span>
-      <span style="font-size:11px;color:var(--t1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>
-      <span style="font-size:9.5px;color:var(--t2);flex-shrink:0;">${a.words}w</span>
-    </div>`).join('');
-}
-
-// ── Knowledge ─────────────────────────────────────
-function renderKnowledge(knows){
-  const el=document.getElementById('know-grid');
-  el.innerHTML=knows.map(k=>{
-    const w=Math.min(k.lines*5,100);
-    const age=k.age<0?'尚未建立':k.age<60?k.age+'m前':k.age<1440?Math.floor(k.age/60)+'h前':Math.floor(k.age/1440)+'d前';
-    return `<div class="know-box">
-      <div class="know-label">${esc(k.label)}</div>
-      <div class="know-val">${k.lines}</div>
-      <div class="know-sub">${age}</div>
-      <div class="know-bar"><div class="know-fill" style="width:${w}%"></div></div>
-    </div>`;
-  }).join('');
-}
-
-// ── Diag ──────────────────────────────────────────
-function renderDiag(diag){
-  const sc=diag.score??100;
-  const sc_c=sc>=85?'ok':sc>=60?'warn':'err';
-  const bm={ok:'b-ok',warn:'b-warn',err:'b-err'};
-  document.getElementById('dscore').innerHTML=
-    `<span class="badge ${bm[sc_c]}">${sc}% 健康</span>`;
-  const pm={ok:'ok',warn:'warn',error:'error',info:'info'};
-  document.getElementById('dhealth').innerHTML=(diag.health||[]).map(h=>`
-    <div class="hp"><div class="hp-n">${esc(h.name)}</div>
-    <div class="hp-v ${pm[h.status]||'info'}">${esc(h.val)}</div></div>`).join('');
-  const im={ok:'✓',warn:'!',error:'✕',info:'i'};
-  document.getElementById('dlist').innerHTML=(diag.issues||[]).map(it=>`
-    <div class="di">
-      <div class="di-ic ${it.level}">${im[it.level]||'i'}</div>
-      <div class="di-b"><div class="di-t">${esc(it.title)}</div>
-        ${it.desc?`<div class="di-d">${esc(it.desc)}</div>`:''}</div>
-      <div class="di-tag">${esc(it.tag||'')}</div>
-    </div>`).join('')||'<div class="empty">無診斷項目</div>';
-}
-
-// ── Topics ────────────────────────────────────────
-function renderTopics(perf){
-  document.getElementById('tgrid').innerHTML=['A','B','C','D'].map(c=>{
-    const d=perf[c]||{avg_upvotes:0,count:0};
-    const w=Math.min((d.avg_upvotes||0)*2,100);
-    const col=CAT_C[c];
-    return `<div class="tb2">
-      <div class="t-cat" style="color:${col}">${c} 類</div>
-      <div class="t-nm">${CAT_L[c]}</div>
-      <div class="t-vl" style="color:${col}">${Number(d.avg_upvotes||0).toFixed(0)}</div>
-      <div class="t-sb">avg upvotes · ${d.count||0} 篇</div>
-      <div class="t-br"><div class="t-fl" style="width:${w}%;background:${col}"></div></div>
-    </div>`;
-  }).join('');
-}
-
-// ── Feed ──────────────────────────────────────────
+/* ─── FEED ─── */
 function renderFeed(feed){
   const el=document.getElementById('feed-list');
-  if(!feed||!feed.length){
-    el.innerHTML='<div class="empty" style="padding:16px;text-align:center;">尚無活動記錄</div>';
-    return;
-  }
+  if(!feed||!feed.length){el.innerHTML='<div class="empty" style="padding:14px;">尚無活動</div>';return;}
   el.innerHTML=feed.map(f=>{
-    const col=FEED_C[f.agent]||'#8A837A';
-    return `<div class="fi">
-      <div class="fi-dot ${f.type}"></div>
-      <div class="fi-body">
-        <span class="fi-badge" style="background:${col}18;color:${col};border:1px solid ${col}30;">${esc(f.agent)}</span>
-        <div class="fi-msg">${esc(f.msg)}</div>
-        ${f.time?`<div class="fi-time">${esc(f.time)}</div>`:''}
-      </div>
-    </div>`;
+    const col=FEDC[f.agent]||'#8B949E';
+    return '<div class="fi"><div class="fi-dot '+esc(f.type)+'"></div>'
+      +'<div class="fi-b"><span class="fi-badge" style="background:'+col+'18;color:'+col+';border:1px solid '+col+'30">'+esc(f.agent)+'</span>'
+      +'<div class="fi-msg">'+esc(f.msg)+'</div>'+(f.time?'<div class="fi-t">'+esc(f.time)+'</div>':'')+'</div></div>';
   }).join('');
 }
 
-// ── Log ───────────────────────────────────────────
-function renderLog(d){
-  const lines=currentLog==='cron'?d.cron_log_tail:d.error_log;
-  const el=document.getElementById('logbd');
-  if(!lines||!lines.length){el.textContent='（無記錄）';return;}
-  el.innerHTML=lines.map(l=>{
-    let c='';
-    if(/error|fail|FAIL/i.test(l)) c='ll-e';
-    else if(/APPROVED|success|完成/i.test(l)) c='ll-s';
-    else if(/REJECTED|warn|WARNING/i.test(l)) c='ll-w';
-    return c?`<span class="${c}">${esc(l)}</span>`:esc(l);
-  }).join('\n');
-  el.scrollTop=el.scrollHeight;
-}
-function switchLog(t,btn){
-  currentLog=t;
-  document.querySelectorAll('.log-tab').forEach(x=>x.classList.remove('active'));
-  btn.classList.add('active');
-  if(lastData) renderLog(lastData);
+/* ─── ARTICLES ─── */
+function renderArts(arts){
+  const el=document.getElementById('arts-list'),cnt=document.getElementById('arts-count');
+  if(!arts||!arts.length){el.innerHTML='<div class="empty" style="padding:12px;">尚無文章</div>';if(cnt)cnt.textContent='';return;}
+  if(cnt)cnt.textContent=arts.length+' 篇';
+  el.innerHTML=arts.slice(0,15).map(a=>
+    '<div class="art-item" onclick="openArticle(\''+esc(a.name)+'\',\''+esc(a.title)+'\')">'
+    +'<div class="art-dot"></div>'
+    +'<div class="art-title" title="'+esc(a.title)+'">'+esc(a.title)+'</div>'
+    +'<div class="art-w">'+esc(String(a.words))+'w</div></div>'
+  ).join('');
 }
 
-// ── Chat ──────────────────────────────────────────
+/* ─── TAB SWITCH ─── */
+function switchTab(name,btn){
+  document.querySelectorAll('.rp-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  const mp={detail:'pane-detail',feed:'pane-feed',chat:'pane-chat',arts:'pane-arts'};
+  document.querySelectorAll('.rp-pane').forEach(p=>p.classList.remove('active'));
+  const t=document.getElementById(mp[name]);if(t)t.classList.add('active');
+}
+
+/* ─── CHAT ─── */
 function addMsg(role,text){
   const box=document.getElementById('chat-msgs');
-  const el=document.createElement('div');
-  el.className='cm '+role;
-  el.textContent=text;
-  box.appendChild(el);
-  box.scrollTop=box.scrollHeight;
+  const el=document.createElement('div');el.className='cm '+role;el.textContent=text;
+  box.appendChild(el);box.scrollTop=box.scrollHeight;
 }
 async function sendChat(){
-  const inp=document.getElementById('chat-in');
-  const msg=inp.value.trim();
-  if(!msg) return;
-  inp.value='';
-  addMsg('user',msg);
+  const inp=document.getElementById('chat-in');const msg=inp.value.trim();if(!msg)return;
+  inp.value='';addMsg('user',msg);
   document.getElementById('chat-btn').disabled=true;
   document.getElementById('chat-typing').style.display='block';
   try{
-    const r=await fetch('/api/chat',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
-    const d=await r.json();
-    addMsg('ai',d.reply||'（無回應）');
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+    const d=await r.json();addMsg('ai',d.reply||'（無回應）');
   }catch(e){addMsg('sys','連線失敗：'+e);}
   document.getElementById('chat-btn').disabled=false;
   document.getElementById('chat-typing').style.display='none';
+  // switch to chat pane
+  document.querySelectorAll('.rp-tab')[2].click();
 }
 function chatKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 
-// ── Article Modal ─────────────────────────────────
+/* ─── ARTICLE MODAL ─── */
 async function openArticle(name,title){
-  if(!name) return;
   currentArticleName=name;
   document.getElementById('mtitle').textContent=title||name;
   document.getElementById('mbody').textContent='載入中...';
   document.getElementById('mfoot').textContent='';
+  const b=document.getElementById('devto-btn');b.disabled=false;b.textContent='→ dev.to 草稿';
   document.getElementById('modal').classList.add('open');
   try{
     const r=await fetch('/api/article?name='+encodeURIComponent(name));
-    if(r.ok){
-      const txt=await r.text();
-      document.getElementById('mbody').textContent=txt;
-      document.getElementById('mfoot').textContent=
-        `${name}.md  ·  ${txt.split(/\s+/).length} 詞`;
-    }else{document.getElementById('mbody').textContent='找不到文章。';}
+    if(r.ok){const t=await r.text();document.getElementById('mbody').textContent=t;document.getElementById('mfoot').textContent=name+'.md · '+t.split(/\s+/).length+' 詞';}
+    else document.getElementById('mbody').textContent='找不到文章。';
   }catch(e){document.getElementById('mbody').textContent='載入失敗：'+e;}
 }
-
 async function postToDevto(){
-  if(!currentArticleName) return;
-  const btn=document.getElementById('devto-btn');
-  btn.disabled=true; btn.textContent='發布中...';
+  if(!currentArticleName)return;
+  const btn=document.getElementById('devto-btn');btn.disabled=true;btn.textContent='發布中...';
   try{
-    const r=await fetch('/api/post-devto',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:currentArticleName})});
+    const r=await fetch('/api/post-devto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:currentArticleName})});
     const d=await r.json();
-    if(d.ok){
-      btn.textContent='✓ 已建立草稿';
-      document.getElementById('mfoot').textContent+=`  ·  dev.to: ${d.url||'(草稿)'}`;
-    }else{
-      btn.textContent='✗ 失敗：'+d.error.slice(0,40);
-      btn.disabled=false;
-    }
+    if(d.ok){btn.textContent='✓ 草稿建立';document.getElementById('mfoot').textContent+=' · '+(d.url||'草稿');}
+    else{btn.textContent='✗ '+d.error.slice(0,35);btn.disabled=false;}
   }catch(e){btn.textContent='連線失敗';btn.disabled=false;}
 }
+function closeModal(e){if(!e||e.target.id==='modal')document.getElementById('modal').classList.remove('open');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal({target:{id:'modal'}});});
 
-function closeModal(e){
-  if(!e||e.target.id==='modal')
-    document.getElementById('modal').classList.remove('open');
-}
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') closeModal({target:{id:'modal'}});
-});
-
-function esc(s){
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 fetchNow();
 </script>
@@ -1461,5 +1275,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     port=int(os.environ.get("DASHBOARD_PORT",3000))
-    print(f"Dashboard v7 啟動：http://0.0.0.0:{port}")
+    print(f"Dashboard v8 啟動：http://0.0.0.0:{port}")
     HTTPServer(("0.0.0.0",port),Handler).serve_forever()
