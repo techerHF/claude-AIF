@@ -8,8 +8,9 @@ set -euo pipefail
 echo "=== AI 無人工廠 VPS 部署 ==="
 echo "時間：$(date)"
 
-# 1. 更新程式碼
-git pull origin main
+# 1. 更新程式碼（自動偵測當前 branch）
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+git pull origin "$CURRENT_BRANCH" || git pull origin master || true
 
 # 2. 設定 hook 執行權限
 chmod +x .claude/hooks/*.sh
@@ -53,11 +54,30 @@ fi
 
 echo ""
 echo "=== 部署完成 ==="
-echo "設定 cron 排程（兩條）..."
+echo "設定 cron 排程..."
+
+# 偵測 cron 實作（容器環境可能需要安裝）
+if ! command -v crontab >/dev/null 2>&1; then
+  echo "crontab 未找到，嘗試安裝 cron..."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq cron
+    service cron start 2>/dev/null || true
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache dcron
+    crond 2>/dev/null || true
+  else
+    echo "WARN: 無法自動安裝 cron，請手動安裝後重新執行 deploy.sh"
+    echo "Ubuntu/Debian: apt-get install -y cron && service cron start"
+    echo "Alpine: apk add dcron && crond"
+    echo ""
+    echo "=== cron 未設定，其餘部署完成 ==="
+    exit 0
+  fi
+fi
 
 # 設定兩條 cron
 (
-  crontab -l 2>/dev/null | grep -v 'ai-factory/run.sh' | grep -v 'feedback-collector'
+  crontab -l 2>/dev/null | grep -v 'ai-factory/run.sh' | grep -v 'feedback-collector' || true
   echo "0  9 * * * /bin/bash ~/ai-factory/run.sh >> ~/ai-factory/logs/cron.log 2>&1"
   echo "10 9 * * * cd ~/ai-factory && claude -p '呼叫 feedback-collector agent 收集昨日發文數據' --allowedTools 'Read,Write,Bash,Agent,WebFetch' --permission-mode acceptEdits --max-turns 20 >> ~/ai-factory/logs/feedback.log 2>&1"
 ) | crontab -
