@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2026-04-04",
+    "timestamp": "2026-04-04T09:08:00",
+    "title": "自製電容式壓力感測器",
+    "status": "reviewed",
+    "subreddit": "r/arduino",
+    "category": "A",
+    "article_path": "articles/2026-04-04-capacitive-pressure-sensor.md",
+    "reddit_draft": "logs/reddit-draft-2026-04-04.md"
+  },
+  {
+    "date": "2026-04-05",
+    "timestamp": "2026-04-05T09:08:00",
+    "title": "5指彎曲感測手套控制器",
+    "status": "reviewed",
+    "subreddit": "r/maker",
+    "category": "B",
+    "article_path": "articles/2026-04-05-flex-sensor-gesture.md",
+    "reddit_draft": "logs/reddit-draft-2026-04-05.md"
+  }
+]

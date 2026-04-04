@@ -1,0 +1,29 @@
+{
+  "last_updated": "2026-04-05",
+  "categories": {
+    "A": {
+      "avg_upvotes": 47.0,
+      "avg_comments": 15.0,
+      "count": 1,
+      "trend": "unknown"
+    },
+    "B": {
+      "avg_upvotes": 0.0,
+      "avg_comments": 0.0,
+      "count": 0,
+      "trend": "unknown"
+    },
+    "C": {
+      "avg_upvotes": 0.0,
+      "avg_comments": 0.0,
+      "count": 0,
+      "trend": "unknown"
+    },
+    "D": {
+      "avg_upvotes": 0.0,
+      "avg_comments": 0.0,
+      "count": 0,
+      "trend": "unknown"
+    }
+  }
+}
