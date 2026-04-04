@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI 無人工廠 Dashboard v6
-— 完整流程看板：11 Agent × 26 Skill × 11 Hook × 檔案傳遞可視化 + 智能聊天
+AI 無人工廠 Dashboard v7
+— 圓桌協作室：空間型 Agent 可視化 + 6 核心座位 + 後勤支援區 + 智能聊天
 執行：python3 ~/ai-factory/dashboard.py
 """
 
@@ -484,7 +484,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI 無人工廠 v6</title>
+<title>AI 無人工廠 v7 — 圓桌協作室</title>
 <style>
 :root{
   --bg0:#F6F3EE; --bg1:#FBFAF7; --bg2:#F1EEE8; --bg3:#E8E3DA;
@@ -496,6 +496,7 @@ HTML = r"""<!DOCTYPE html>
   --err:#B36A6A; --err-s:rgba(179,106,106,0.12);
   --info:#8193A8; --info-s:rgba(129,147,168,0.10);
   --pur:#8B85A0; --pur-s:rgba(139,133,160,0.12);
+  --council-r:170px; /* seat orbit radius */
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{min-height:100%;background:var(--bg0);color:var(--t0);
@@ -556,62 +557,108 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
 .cb{padding:14px 18px;}
 
 /* ══════════════════════════════════
-   PIPELINE FLOW BOARD
+   COUNCIL ROOM (圓桌協作室)
 ══════════════════════════════════ */
-.flow-board{padding:14px 18px 18px;display:flex;flex-direction:column;gap:0;}
-
-/* 每個 agent 的卡片 */
-.pf-card{
-  border:1px solid var(--b0);border-radius:10px;
-  background:var(--bg1);overflow:hidden;transition:.25s;
+.council-wrap{padding:20px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:18px;}
+.council-room{
+  position:relative;width:480px;height:460px;flex-shrink:0;
 }
-.pf-card:hover{border-color:var(--b1);box-shadow:0 2px 8px rgba(50,40,30,.05);}
-.pf-card.working{border-color:rgba(114,122,140,.35);background:var(--brand-s);}
-.pf-card.waiting{opacity:.7;}
-.pf-card.idle{opacity:.85;}
-
-/* 卡片頭部 */
-.pf-head{
-  display:flex;align-items:center;gap:12px;padding:10px 14px;
-  cursor:pointer;user-select:none;
+/* table surface */
+.council-table{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:240px;height:240px;border-radius:50%;
+  background:radial-gradient(circle at 50% 40%, var(--bg2) 0%, var(--bg3) 100%);
+  border:1.5px solid var(--b1);
+  box-shadow:0 2px 18px rgba(50,40,30,.06),inset 0 1px 3px rgba(255,255,255,.6);
 }
-.pf-num{width:20px;height:20px;border-radius:50%;background:var(--bg3);
-  font-size:9.5px;font-weight:700;color:var(--t2);display:flex;align-items:center;
-  justify-content:center;flex-shrink:0;}
-.pf-card.working .pf-num{background:var(--brand);color:#fff;}
-.pf-icon{font-size:18px;width:28px;text-align:center;flex-shrink:0;}
-.pf-card.working .pf-icon{animation:working 1.2s ease-in-out infinite;}
-@keyframes working{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
-.pf-name-col{flex:1;min-width:0;}
-.pf-name{font-size:13px;font-weight:700;color:var(--t0);}
-.pf-desc{font-size:11px;color:var(--t2);line-height:1.4;margin-top:1px;}
-.pf-phase{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;
-  letter-spacing:.05em;margin-right:6px;}
-.pf-sbadge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;}
-.pf-sbadge.working{background:var(--brand-s);color:var(--brand);}
-.pf-sbadge.waiting{background:var(--bg3);color:var(--t2);}
-.pf-sbadge.idle{background:var(--bg3);color:var(--t2);}
-.pf-toggle{font-size:11px;color:var(--t2);margin-left:4px;transition:.2s;}
+/* SVG lines */
+.council-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
 
-/* 卡片詳情（可折疊）*/
-.pf-body{border-top:1px solid var(--b0);padding:12px 14px;background:var(--bg2);}
-.pf-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;}
-.pf-section-label{font-size:9.5px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--t2);margin-bottom:5px;}
-
-/* 檔案列表 */
-.file-item{
-  display:flex;align-items:center;gap:5px;
-  font-size:10.5px;padding:2px 0;
+/* center task display */
+.council-center{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:160px;text-align:center;z-index:10;pointer-events:none;
 }
+.cc-logo{font-size:20px;color:var(--brand);margin-bottom:3px;opacity:.7;}
+.cc-task{font-size:10.5px;font-weight:700;color:var(--t0);line-height:1.4;
+  max-width:140px;margin:0 auto;word-break:break-all;}
+.cc-active{font-size:9.5px;color:var(--brand);margin-top:3px;font-weight:600;}
+.cc-idle{font-size:9.5px;color:var(--t2);margin-top:3px;font-style:italic;}
+
+/* agent seats */
+.agent-seat{
+  position:absolute;transform:translate(-50%,-50%);
+  width:78px;text-align:center;cursor:pointer;z-index:20;
+  transition:transform .2s;
+}
+.agent-seat:hover{transform:translate(-50%,-50%) scale(1.07);}
+.seat-avatar{
+  width:48px;height:48px;border-radius:50%;margin:0 auto 5px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  border:2px solid var(--b1);
+  background:var(--bg1);
+  transition:border-color .3s,box-shadow .3s;
+  position:relative;
+}
+/* working ring */
+@keyframes ring-pulse{0%,100%{box-shadow:0 0 0 0 rgba(114,122,140,.5);}60%{box-shadow:0 0 0 7px rgba(114,122,140,0);}}
+@keyframes breathe{0%,100%{opacity:1;}50%{opacity:.45;}}
+@keyframes seat-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+
+.agent-seat.working .seat-avatar{
+  border-color:var(--brand);
+  box-shadow:0 0 0 3px var(--brand-s);
+  animation:ring-pulse 1.4s ease-out infinite;
+}
+.agent-seat.waiting .seat-avatar{
+  border-color:var(--b1);opacity:.75;
+  animation:breathe 2.2s ease-in-out infinite;
+}
+.agent-seat.idle .seat-avatar{opacity:.55;border-color:var(--b0);}
+.agent-seat.done .seat-avatar{border-color:var(--ok);background:var(--ok-s);}
+
+.seat-name{font-size:9.5px;font-weight:700;color:var(--t1);line-height:1.2;}
+.seat-badge{
+  display:inline-block;font-size:8.5px;font-weight:600;
+  padding:1px 6px;border-radius:999px;margin-top:2px;
+}
+.seat-badge.working{background:var(--brand-s);color:var(--brand);}
+.seat-badge.waiting{background:var(--bg3);color:var(--t2);}
+.seat-badge.idle{background:var(--bg3);color:var(--t2);}
+.seat-badge.done{background:var(--ok-s);color:var(--ok);}
+.seat-phase{font-size:8px;color:var(--t2);margin-top:1px;}
+
+/* active glow dot in top-right of avatar */
+.seat-dot{
+  position:absolute;top:1px;right:1px;
+  width:10px;height:10px;border-radius:50%;
+  border:2px solid var(--bg1);
+}
+.seat-dot.working{background:var(--brand);animation:pls 1.2s infinite;}
+.seat-dot.waiting{background:var(--warn);}
+.seat-dot.idle{background:var(--b1);}
+.seat-dot.done{background:var(--ok);}
+
+/* agent detail drawer */
+.agent-detail{
+  width:100%;background:var(--bg2);border:1px solid var(--b0);
+  border-radius:10px;padding:0;overflow:hidden;
+  max-height:0;transition:max-height .3s ease,padding .3s;
+}
+.agent-detail.open{max-height:320px;padding:14px 16px;}
+.ad-title{font-size:12px;font-weight:700;color:var(--t0);margin-bottom:8px;
+  display:flex;align-items:center;gap:8px;}
+.ad-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;}
+.ad-sec{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--t2);margin-bottom:5px;}
+.file-item{display:flex;align-items:center;gap:5px;font-size:10.5px;padding:2px 0;}
 .file-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 .file-dot.ok{background:var(--ok);}
 .file-dot.miss{background:var(--b0);}
 .file-path{color:var(--t1);font-family:'SF Mono',Menlo,monospace;font-size:10px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;}
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;}
 .file-age{font-size:9.5px;color:var(--t2);white-space:nowrap;flex-shrink:0;}
-
-/* Skill / Hook pills */
 .pill-list{display:flex;flex-wrap:wrap;gap:4px;}
 .pill{font-size:9.5px;padding:2px 7px;border-radius:999px;white-space:nowrap;}
 .pill.skill-ok{background:var(--brand-s);color:var(--brand);}
@@ -619,18 +666,23 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
 .pill.hook-ok{background:var(--ok-s);color:var(--ok);}
 .pill.hook-miss{background:var(--err-s);color:var(--err);}
 
-/* 檔案傳遞連接線 */
-.pf-transfer{
-  display:flex;align-items:center;gap:8px;
-  padding:5px 0 5px 24px;
+/* ── SUPPORT TEAM (後勤支援) ── */
+.support-row{display:flex;gap:8px;padding:14px 18px;}
+.support-item{
+  flex:1;background:var(--bg2);border:1px solid var(--b0);border-radius:9px;
+  padding:10px 8px;text-align:center;cursor:pointer;transition:.2s;
 }
-.pf-tline{width:1px;height:20px;background:var(--b0);margin:0 7px;flex-shrink:0;}
-.pf-tfiles{display:flex;flex-wrap:wrap;gap:4px;}
-.pf-tfile{
-  font-size:9.5px;padding:2px 8px;border-radius:999px;
-  background:var(--bg2);border:1px solid var(--b0);
-  color:var(--t2);font-family:'SF Mono',Menlo,monospace;
-}
+.support-item:hover{border-color:var(--b1);background:var(--bg1);}
+.support-item.working{border-color:rgba(114,122,140,.35);background:var(--brand-s);}
+.support-item.done{border-color:rgba(124,154,126,.3);background:var(--ok-s);}
+.support-icon{font-size:16px;margin-bottom:4px;}
+.support-icon.working{animation:breathe 1s ease-in-out infinite;}
+.support-name{font-size:9.5px;font-weight:700;color:var(--t1);}
+.support-phase{font-size:8.5px;color:var(--t2);}
+.support-sbadge{font-size:8px;font-weight:600;padding:1px 5px;border-radius:999px;margin-top:3px;display:inline-block;}
+.support-sbadge.working{background:var(--brand-s);color:var(--brand);}
+.support-sbadge.waiting,.support-sbadge.idle{background:var(--bg3);color:var(--t2);}
+.support-sbadge.done{background:var(--ok-s);color:var(--ok);}
 
 /* ── KNOWLEDGE LOOP ── */
 .know-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
@@ -775,7 +827,7 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
 
 <nav class="topbar">
   <div class="tb-l">
-    <div class="logo">⬡ AI 無人工廠<span class="logo-sub">/ 11 Agents · 26 Skills · 11 Hooks</span></div>
+    <div class="logo">⬡ AI 無人工廠<span class="logo-sub">/ 圓桌協作室 · 11 Agents</span></div>
     <div class="spill si" id="spill"><span class="sdot"></span><span class="stxt">載入中</span></div>
   </div>
   <div class="tb-r">
@@ -802,25 +854,47 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
 <div class="main">
  <div class="left">
 
-  <!-- ══ 完整流程看板 ══ -->
+  <!-- ══ 圓桌協作室 ══ -->
   <div class="card">
     <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--brand)"></span>
-        完整生產流程 — Agent × 檔案 × Skill × Hook</div>
+      <div class="ct"><span class="cdot" style="background:var(--brand);animation:pls 2.5s infinite;"></span>
+        圓桌協作室</div>
       <span id="flow-summary" style="font-size:10.5px;color:var(--t2)"></span>
     </div>
-    <div class="flow-board" id="flow-board"></div>
+    <div class="council-wrap">
+      <!-- Council room rendered by JS -->
+      <div class="council-room" id="council-room">
+        <div class="council-table"></div>
+        <svg class="council-svg" id="council-svg"></svg>
+        <div class="council-center" id="council-center">
+          <div class="cc-logo">⬡</div>
+          <div class="cc-task" id="cc-task">載入中...</div>
+          <div class="cc-idle" id="cc-sub">—</div>
+        </div>
+        <!-- seats injected by JS -->
+      </div>
+      <!-- Detail drawer: click a seat to expand -->
+      <div class="agent-detail" id="agent-detail"></div>
+    </div>
   </div>
 
-  <!-- ══ 智能體進化循環 ══ -->
+  <!-- ══ 後勤支援團隊 ══ -->
   <div class="card">
     <div class="ch">
-      <div class="ct"><span class="cdot" style="background:var(--pur)"></span>
-        智能體進化循環 — 知識庫</div>
-      <span style="font-size:10px;color:var(--t2)">feedback → style-updater → writing-style → 下一篇</span>
+      <div class="ct"><span class="cdot" style="background:var(--pur)"></span>後勤支援團隊</div>
+      <span style="font-size:10px;color:var(--t2)">seo · 英文 · 中文 · 風格進化 · 知識庫</span>
+    </div>
+    <div class="support-row" id="support-row"></div>
+  </div>
+
+  <!-- ══ 知識庫進化 ══ -->
+  <div class="card">
+    <div class="ch">
+      <div class="ct"><span class="cdot" style="background:var(--pur)"></span>知識庫進化循環</div>
+      <span style="font-size:10px;color:var(--t2)">feedback → style-updater → writing-style ↺</span>
     </div>
     <div class="cb">
-      <div class="learn-arrow">Reddit 互動數據 → feedback-collector → style-updater 更新 writing-style.md → 下一輪寫作品質提升 ↺</div>
+      <div class="learn-arrow">Reddit 互動 → feedback-collector → style-updater 更新 writing-style.md → 下一輪品質提升 ↺</div>
       <div style="height:10px"></div>
       <div class="know-grid" id="know-grid"></div>
     </div>
@@ -870,6 +944,15 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
     <div class="feed-scroll" id="feed-list"></div>
   </div>
 
+  <!-- 文章庫 -->
+  <div class="card" style="flex-shrink:0;">
+    <div class="ch">
+      <div class="ct"><span class="cdot" style="background:var(--ok)"></span>文章庫</div>
+      <span id="arts-count" style="font-size:10.5px;color:var(--t2)"></span>
+    </div>
+    <div style="padding:0 14px 12px;display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto;" id="arts-list"></div>
+  </div>
+
   <!-- Chat -->
   <div class="card" style="flex-shrink:0;">
     <div class="ch">
@@ -908,12 +991,28 @@ html,body{min-height:100%;background:var(--bg0);color:var(--t0);
 
 <script>
 let currentLog='cron', countdown=5, timer, lastData=null, currentArticleName='';
+let activeDetailId=null;
 
 const CAT_C={A:'#727A8C',B:'#8B85A0',C:'#7C9A7E',D:'#8193A8'};
 const CAT_L={A:'電容/壓力感測',B:'手勢/彎曲感測',C:'互動設計',D:'IoT/ESP32'};
 const FEED_C={'writer':'#727A8C','researcher':'#8193A8','reviewer':'#8B85A0',
   'poster':'#7C9A7E','quality-check':'#B89B72','topic-selector':'#727A8C',
   'system':'#8A837A','feedback':'#8B85A0'};
+
+// ── Council layout: 6 core agents around round table ──
+const CORE_IDS=['researcher','topic-selector','writer','reviewer','poster','feedback-collector'];
+const SUPPORT_IDS=['seo-agent','english-writer','chinese-writer','style-updater','knowledge-subagent'];
+
+// Council room: 480×460, center (240,230), orbit radius 170px
+// Angles (clock): 0°=top, 60°=upper-right, 120°=lower-right, 180°=bottom, 240°=lower-left, 300°=upper-left
+const CX=240, CY=230, R=170;
+function seatPos(idx){
+  const a=(idx*60-90)*Math.PI/180;
+  return {x:Math.round(CX+R*Math.cos(a)), y:Math.round(CY+R*Math.sin(a))};
+}
+// PHASE → accent color
+const PHASE_COL={'探索':'#8193A8','策略':'#8B85A0','生產':'#727A8C',
+  '品管':'#B89B72','發布':'#7C9A7E','回饋':'#B89B72','進化':'#8B85A0'};
 
 async function fetchNow(){
   clearInterval(timer); countdown=5;
@@ -948,16 +1047,21 @@ function render(d){
   se.textContent=sc+'%';
   se.className='kpi-v '+(sc>=85?'ok':sc>=60?'warn':'err');
   document.getElementById('k5').textContent=d.api.model;
-  renderFlow(d.flow||[], d.file_transfers||[]);
+
+  const flow=d.flow||[];
+  const wc=flow.filter(a=>a.status==='working').length;
+  const wa=flow.filter(a=>a.status==='waiting').length;
+  document.getElementById('flow-summary').textContent=
+    wc>0?`${wc} 個工作中`:wa>0?`${wa} 個等待中`:'全員待命';
+
+  renderCouncil(flow, d.pipeline||{});
+  renderSupport(flow);
   renderKnowledge(d.knowledge||[]);
   renderDiag(d.diag||{});
   renderTopics(d.perf||{});
   renderFeed(d.feed||[]);
+  renderArticles(d.articles||[]);
   renderLog(d);
-  const wc=(d.flow||[]).filter(a=>a.status==='working').length;
-  const wa=(d.flow||[]).filter(a=>a.status==='waiting').length;
-  document.getElementById('flow-summary').textContent=
-    wc>0?`${wc} 個工作中`:wa>0?`${wa} 個等待中`:'全員待命';
 }
 
 function setPill(cls,label){
@@ -966,71 +1070,115 @@ function setPill(cls,label){
   el.querySelector('.stxt').textContent=label;
 }
 
-// ── Pipeline Flow ──────────────────────────────────
-function renderFlow(flow, transfers){
-  const board=document.getElementById('flow-board');
-  let html='';
-  const phaseColors={'探索':'#8193A8','策略':'#8B85A0','生產':'#727A8C',
-    '品管':'#B89B72','發布':'#7C9A7E','回饋':'#B89B72','進化':'#8B85A0'};
+// ── Council Room ──────────────────────────────────
+function renderCouncil(flow, pipeline){
+  const room=document.getElementById('council-room');
+  const svg=document.getElementById('council-svg');
 
-  flow.forEach((a,i)=>{
-    const st=a.status||'idle';
-    const isOpen=st==='working'||st==='waiting';
+  // Build lookup by id
+  const byId={};
+  (flow||[]).forEach(a=>byId[a.id]=a);
 
-    // agent card
-    html+=`<div class="pf-card ${st}" id="pfc-${esc(a.id)}">
-      <div class="pf-head" onclick="toggleFlow('${esc(a.id)}')">
-        <div class="pf-num">${a.order}</div>
-        <div class="pf-icon" style="${st==='working'?'':'font-size:16px'}">${esc(a.icon)}</div>
-        <div class="pf-name-col">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span class="pf-name">${esc(a.label)}</span>
-            <span class="pf-phase" style="background:${phaseColors[a.phase]||'#8A837A'}18;color:${phaseColors[a.phase]||'#8A837A'}">${esc(a.phase)}</span>
-          </div>
-          <div class="pf-desc">${esc(a.desc)}</div>
-        </div>
-        <span class="pf-sbadge ${st}">${esc(a.status_txt)}</span>
-        <span class="pf-toggle" id="tgl-${esc(a.id)}">${isOpen?'▲':'▼'}</span>
-      </div>`;
+  // Center display
+  const art=pipeline.article;
+  const taskEl=document.getElementById('cc-task');
+  const subEl=document.getElementById('cc-sub');
+  if(art){
+    taskEl.textContent=(art.title||'進行中').slice(0,28);
+    const active=flow.find(a=>a.status==='working');
+    subEl.className='cc-active';
+    subEl.textContent=active?(active.label+' · 工作中'):'任務完成';
+  } else {
+    taskEl.textContent='尚未執行任務';
+    subEl.className='cc-idle';
+    subEl.textContent='等待 run.sh 啟動';
+  }
 
-    // detail body
-    const disp=isOpen?'block':'none';
-    html+=`<div class="pf-body" id="pfb-${esc(a.id)}" style="display:${disp}">
-      <div class="pf-grid">
-        <div>
-          <div class="pf-section-label">讀取（Input）</div>
-          ${(a.reads_stat||[]).map(r=>fileItem(r.path,r.stat)).join('')}
-        </div>
-        <div>
-          <div class="pf-section-label">寫入（Output）</div>
-          ${(a.writes_stat||[]).map(w=>fileItem(w.path,w.stat)).join('')}
-        </div>
-        <div>
-          <div class="pf-section-label">使用 Skill (${(a.skills_avail||[]).length})</div>
-          <div class="pill-list">${(a.skills_avail||[]).map(s=>
-            `<span class="pill ${s.ok?'skill-ok':'skill-miss'}">${esc(s.name)}</span>`).join('')||'<span class="empty">（無）</span>'}
-          </div>
-        </div>
-        <div>
-          <div class="pf-section-label">執行 Hook (${(a.hooks_avail||[]).length})</div>
-          <div class="pill-list">${(a.hooks_avail||[]).map(h=>
-            `<span class="pill ${h.ok?'hook-ok':'hook-miss'}">${esc(h.name)}</span>`).join('')||'<span class="empty">（無）</span>'}
-          </div>
-        </div>
-      </div>
-    </div>`;
-    html+='</div>';// end pf-card
+  // Remove old seats (keep table + svg + center)
+  room.querySelectorAll('.agent-seat').forEach(el=>el.remove());
 
-    // transfer line to next agent
-    if(i<flow.length-1){
-      const tf=(transfers[i]||[]);
-      html+=`<div class="pf-transfer">
-        <div class="pf-tline"></div>
-        <div class="pf-tfiles">${tf.map(f=>`<span class="pf-tfile">${esc(f)}</span>`).join('')}</div>
-      </div>`;
+  // Draw SVG lines from center to each seat
+  let svgHtml='';
+  CORE_IDS.forEach((id,i)=>{
+    const a=byId[id]; if(!a) return;
+    const pos=seatPos(i);
+    const isWorking=a.status==='working';
+    const isDone=a.status==='done'||(flow.indexOf(a)<flow.findIndex(x=>x.status==='working')&&a.status==='idle');
+    const col=isWorking?'rgba(114,122,140,0.5)':isDone?'rgba(124,154,126,0.3)':'rgba(216,210,199,0.6)';
+    const w=isWorking?'2':'1';
+    svgHtml+=`<line x1="${CX}" y1="${CY}" x2="${pos.x}" y2="${pos.y}"
+      stroke="${col}" stroke-width="${w}" stroke-dasharray="${isWorking?'':'4 4'}"/>`;
+    // small file transfer dot midpoint
+    if(isWorking){
+      const mx=(CX+pos.x)/2, my=(CY+pos.y)/2;
+      svgHtml+=`<circle cx="${mx}" cy="${my}" r="3" fill="var(--brand)" opacity="0.5">
+        <animate attributeName="r" values="2;4;2" dur="1.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1.4s" repeatCount="indefinite"/>
+      </circle>`;
     }
   });
-  board.innerHTML=html;
+  svg.innerHTML=svgHtml;
+
+  // Render seats
+  CORE_IDS.forEach((id,i)=>{
+    const a=byId[id];
+    if(!a) return;
+    const pos=seatPos(i);
+    const st=a.status||'idle';
+    const pcol=PHASE_COL[a.phase]||'#8A837A';
+    const seat=document.createElement('div');
+    seat.className=`agent-seat ${st}`;
+    seat.id='seat-'+id;
+    seat.style.left=pos.x+'px';
+    seat.style.top=pos.y+'px';
+    seat.onclick=()=>toggleDetail(id, a);
+    seat.innerHTML=`
+      <div class="seat-avatar" style="${st==='working'?'border-color:'+pcol+';background:'+pcol+'18':''}">
+        <span style="font-size:18px;line-height:1;">${esc(a.icon)}</span>
+        <div class="seat-dot ${st}"></div>
+      </div>
+      <div class="seat-name">${esc(a.label)}</div>
+      <span class="seat-badge ${st}">${esc(a.status_txt)}</span>
+      <div class="seat-phase" style="color:${pcol}">${esc(a.phase)}</div>`;
+    room.appendChild(seat);
+  });
+}
+
+function toggleDetail(id, agent){
+  const drawer=document.getElementById('agent-detail');
+  if(activeDetailId===id){
+    drawer.classList.remove('open');
+    activeDetailId=null;
+    return;
+  }
+  activeDetailId=id;
+  const pcol=PHASE_COL[agent.phase]||'#8A837A';
+  const stBadge=`<span class="seat-badge ${agent.status}" style="font-size:10px;padding:2px 9px;">${esc(agent.status_txt)}</span>`;
+  const reads=(agent.reads_stat||[]).map(r=>fileItem(r.path,r.stat)).join('')||'<span class="empty">—</span>';
+  const writes=(agent.writes_stat||[]).map(w=>fileItem(w.path,w.stat)).join('')||'<span class="empty">—</span>';
+  const skills=(agent.skills_avail||[]).map(s=>`<span class="pill ${s.ok?'skill-ok':'skill-miss'}">${esc(s.name)}</span>`).join('')||'<span class="empty">—</span>';
+  const hooks=(agent.hooks_avail||[]).map(h=>`<span class="pill ${h.ok?'hook-ok':'hook-miss'}">${esc(h.name)}</span>`).join('')||'<span class="empty">—</span>';
+  drawer.innerHTML=`
+    <div class="ad-title">
+      <span style="font-size:18px">${esc(agent.icon)}</span>
+      <span>${esc(agent.label)}</span>
+      <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${pcol}18;color:${pcol}">${esc(agent.phase)}</span>
+      ${stBadge}
+      <span style="flex:1"></span>
+      <button onclick="closeDetail()" style="background:none;border:none;cursor:pointer;color:var(--t2);font-size:13px;">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--t2);margin-bottom:10px;">${esc(agent.desc||'')}</div>
+    <div class="ad-grid">
+      <div><div class="ad-sec">讀取 Input</div>${reads}</div>
+      <div><div class="ad-sec">寫入 Output</div>${writes}</div>
+      <div><div class="ad-sec">Skills (${(agent.skills_avail||[]).length})</div><div class="pill-list">${skills}</div></div>
+      <div><div class="ad-sec">Hooks (${(agent.hooks_avail||[]).length})</div><div class="pill-list">${hooks}</div></div>
+    </div>`;
+  drawer.classList.add('open');
+}
+function closeDetail(){
+  document.getElementById('agent-detail').classList.remove('open');
+  activeDetailId=null;
 }
 
 function fileItem(path,stat){
@@ -1044,13 +1192,44 @@ function fileItem(path,stat){
   </div>`;
 }
 
-function toggleFlow(id){
-  const body=document.getElementById('pfb-'+id);
-  const tgl =document.getElementById('tgl-'+id);
-  if(!body) return;
-  const open=body.style.display==='block';
-  body.style.display=open?'none':'block';
-  if(tgl) tgl.textContent=open?'▼':'▲';
+// ── Support Team ──────────────────────────────────
+function renderSupport(flow){
+  const byId={};
+  (flow||[]).forEach(a=>byId[a.id]=a);
+  const row=document.getElementById('support-row');
+  row.innerHTML=SUPPORT_IDS.map(id=>{
+    const a=byId[id]; if(!a) return '';
+    const st=a.status||'idle';
+    const pcol=PHASE_COL[a.phase]||'#8A837A';
+    return `<div class="support-item ${st}" onclick="toggleDetail('${esc(id)}',${JSON.stringify(a).replace(/"/g,'&quot;')})">
+      <div class="support-icon ${st}">${esc(a.icon)}</div>
+      <div class="support-name">${esc(a.label)}</div>
+      <div class="support-phase" style="color:${pcol}">${esc(a.phase)}</div>
+      <span class="support-sbadge ${st}">${esc(a.status_txt)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Articles ──────────────────────────────────────
+function renderArticles(arts){
+  const el=document.getElementById('arts-list');
+  const cnt=document.getElementById('arts-count');
+  if(!arts||!arts.length){
+    el.innerHTML='<div class="empty" style="padding:8px 4px;">尚無文章</div>';
+    if(cnt) cnt.textContent='';
+    return;
+  }
+  if(cnt) cnt.textContent=arts.length+' 篇';
+  el.innerHTML=arts.slice(0,12).map(a=>`
+    <div onclick="openArticle('${esc(a.name)}','${esc(a.title)}')"
+      style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;
+        border-radius:6px;transition:.15s;"
+      onmouseover="this.style.background='var(--bg3)'"
+      onmouseout="this.style.background=''">
+      <span style="font-size:9.5px;color:var(--ok);flex-shrink:0;">●</span>
+      <span style="font-size:11px;color:var(--t1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>
+      <span style="font-size:9.5px;color:var(--t2);flex-shrink:0;">${a.words}w</span>
+    </div>`).join('');
 }
 
 // ── Knowledge ─────────────────────────────────────
@@ -1282,5 +1461,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     port=int(os.environ.get("DASHBOARD_PORT",3000))
-    print(f"Dashboard v6 啟動：http://0.0.0.0:{port}")
+    print(f"Dashboard v7 啟動：http://0.0.0.0:{port}")
     HTTPServer(("0.0.0.0",port),Handler).serve_forever()
