@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AI 無人工廠 Dashboard v9
-— 像素辦公室：PixiJS 空間型辦公室 + 3 欄佈局 + 對話氣泡 + 檔案飛行動畫
+— 指揮中心 HUD：零外部依賴，純 CSS/JS
 執行：python3 ~/ai-factory/dashboard.py
 """
 
@@ -116,7 +116,7 @@ FILE_TRANSFERS = [
 ]
 
 # ══════════════════════════════════════════════════════════
-#  資料函數（Python backend — 與 v7 相同，不動）
+#  資料函數
 # ══════════════════════════════════════════════════════════
 
 def rj(path, default=None):
@@ -140,7 +140,6 @@ def read_api_env():
     try:
         s = json.loads(Path.home().joinpath(".claude/settings.json").read_text())
         env = s.get("env",{})
-        # Minimax API 使用 ANTHROPIC_AUTH_TOKEN；標準 Anthropic 使用 ANTHROPIC_API_KEY
         token = env.get("ANTHROPIC_AUTH_TOKEN","") or env.get("ANTHROPIC_API_KEY","")
         return (token,
                 env.get("ANTHROPIC_BASE_URL","https://api.anthropic.com").rstrip("/"),
@@ -365,15 +364,13 @@ def do_chat(message):
             ),
             "messages": msgs
         }).encode()
-        # Minimax API 使用 Authorization: Bearer，標準 Anthropic 使用 x-api-key
         is_minimax = "minimax" in base_url.lower() or "api.minimax" in base_url.lower()
         if is_minimax:
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         else:
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
                        "content-type": "application/json"}
-        req = urllib.request.Request(f"{base_url}/v1/messages", data=payload,
-            headers=headers)
+        req = urllib.request.Request(f"{base_url}/v1/messages", data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=45) as resp:
             result = json.loads(resp.read())
             reply  = result["content"][0]["text"]
@@ -465,8 +462,29 @@ def check_hooks(hook_list):
     avail = {f.name for f in hook_dir.glob("*.sh")} if hook_dir.exists() else set()
     return [{"name":h,"ok":h in avail} for h in hook_list]
 
+def revenue_data():
+    f = BASE / ".team-memory/revenue-tracking.json"
+    if not f.exists():
+        return {"monthly_cost":200,"total_revenue":0,"profit_loss":-200,
+                "break_even_progress":"0%","platforms":{}}
+    try: return json.loads(f.read_text(encoding="utf-8"))
+    except: return {}
+
+def proposals_data():
+    f = BASE / ".team-memory/proposals.md"
+    if not f.exists(): return {"content":"","count":0}
+    txt = f.read_text(encoding="utf-8",errors="ignore")
+    count = txt.count("## 提案-")
+    return {"content":txt[-3000:],"count":count}
+
+def standup_data():
+    f = BASE / ".team-memory/standup-log.md"
+    if not f.exists(): return {"recent":[]}
+    lines = f.read_text(encoding="utf-8",errors="ignore").strip().split("\n")
+    return {"recent":lines[-30:]}
+
 # ══════════════════════════════════════════════════════════
-#  HTML — Dashboard v8 像素辦公室
+#  HTML — Dashboard v9 指揮中心 HUD
 # ══════════════════════════════════════════════════════════
 
 HTML = r"""<!DOCTYPE html>
@@ -474,329 +492,410 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI 無人工廠 v9 — 指揮中心</title>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
+<title>AI 指揮中心 v9</title>
 <style>
 :root{
-  --bg0:#0D1117;--bg1:#161B22;--bg2:#1C2333;--bg3:#21262D;
-  --b0:#30363D;--b1:#484F58;
-  --t0:#E6EDF3;--t1:#8B949E;--t2:#484F58;
-  --brand:#58A6FF;--brand-s:rgba(88,166,255,.10);--brand-m:rgba(88,166,255,.20);
-  --ok:#3FB950;--ok-s:rgba(63,185,80,.12);
-  --warn:#D29922;--warn-s:rgba(210,153,34,.12);
-  --err:#F85149;--err-s:rgba(248,81,73,.12);
-  --info:#58A6FF;--info-s:rgba(88,166,255,.10);
-  --pur:#BC8CFF;--pur-s:rgba(188,140,255,.12);
-  --px:'Press Start 2P',monospace;
+  --bg0:#060a0f;--bg1:#0d1117;--bg2:#161b22;--bg3:#1c2333;
+  --b0:#21262d;--b1:#30363d;
+  --t0:#e6edf3;--t1:#8b949e;--t2:#484f58;
+  --ok:#3fb950;--ok-s:rgba(63,185,80,.12);--ok-g:rgba(63,185,80,.04);
+  --warn:#d29922;--warn-s:rgba(210,153,34,.12);
+  --err:#f85149;--err-s:rgba(248,81,73,.12);
+  --brand:#58a6ff;--brand-s:rgba(88,166,255,.08);
+  --pur:#bc8cff;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t0);
-  font-family:'Hiragino Sans','Noto Sans TC',system-ui,sans-serif;
-  font-size:12px;line-height:1.6;}
+  font-family:'Hiragino Sans','Noto Sans TC',system-ui,sans-serif;font-size:12px;line-height:1.6;}
 body{display:flex;flex-direction:column;}
-@keyframes pls{0%,100%{opacity:1;}50%{opacity:.2;}}
-@keyframes borderGlow{0%,100%{box-shadow:0 0 0 0 rgba(63,185,80,.4);}50%{box-shadow:0 0 6px 2px rgba(63,185,80,.2);}}
+@keyframes pls{0%,100%{opacity:1;}50%{opacity:.15;}}
+@keyframes scan{0%{transform:translateY(-100%);}100%{transform:translateY(100vh);}}
+@keyframes alertIn{0%{transform:scale(.92);opacity:0;}100%{transform:scale(1);opacity:1;}}
+@keyframes borderPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,.5);}50%{box-shadow:0 0 12px 3px rgba(248,81,73,.2);}}
+@keyframes warnPulse{0%,100%{box-shadow:0 0 0 0 rgba(210,153,34,.5);}50%{box-shadow:0 0 10px 2px rgba(210,153,34,.15);}}
 
 /* TOPBAR */
 .topbar{display:flex;align-items:center;justify-content:space-between;
-  padding:0 14px;height:42px;background:var(--bg1);
-  border-bottom:2px solid var(--b0);flex-shrink:0;z-index:300;}
-.logo{font-family:var(--px);font-size:9px;color:var(--brand);
-  display:flex;align-items:center;gap:10px;}
-.logo-v{font-size:7px;color:var(--t2);font-family:var(--px);}
-.spill{display:flex;align-items:center;gap:5px;padding:2px 9px;
-  border:1px solid var(--b0);font-size:9px;font-weight:700;background:var(--bg2);}
-.sdot{width:6px;height:6px;border-radius:50%;}
-.si .sdot{background:var(--t2);} .sr .sdot{background:var(--ok);animation:pls 1.5s infinite;} .se .sdot{background:var(--err);}
-.si .stxt{color:var(--t2);} .sr .stxt{color:var(--ok);} .se .stxt{color:var(--err);}
-.tb-r{display:flex;align-items:center;gap:10px;}
-.ts-t{font-size:9px;color:var(--t2);}
-.cdt{font-size:9px;color:var(--brand);min-width:20px;}
-.rbtn{background:none;border:1px solid var(--b0);color:var(--t2);
-  padding:3px 9px;cursor:pointer;font-size:9px;transition:.2s;}
-.rbtn:hover{border-color:var(--brand);color:var(--brand);}
-
-/* WARN STRIP */
-.warn-strip{background:rgba(210,153,34,.08);border-bottom:1px solid rgba(210,153,34,.25);
-  padding:4px 14px;font-size:10px;color:var(--warn);display:none;align-items:center;gap:8px;flex-shrink:0;}
+  padding:0 16px;height:44px;background:var(--bg1);
+  border-bottom:1px solid var(--b0);flex-shrink:0;position:relative;z-index:100;}
+.topbar::after{content:'';position:absolute;bottom:-1px;left:0;right:0;
+  height:1px;background:linear-gradient(90deg,transparent,var(--brand),transparent);opacity:.3;}
+.logo{font-size:11px;font-weight:700;color:var(--brand);letter-spacing:.12em;display:flex;align-items:center;gap:10px;}
+.logo-sub{font-size:9px;color:var(--t2);letter-spacing:.05em;}
+.status-pill{display:flex;align-items:center;gap:5px;padding:3px 10px;
+  border:1px solid var(--b0);font-size:9px;font-weight:700;letter-spacing:.06em;}
+.sdot{width:7px;height:7px;border-radius:50%;}
+.s-idle .sdot{background:var(--t2);}
+.s-run .sdot{background:var(--ok);animation:pls 1.2s infinite;}
+.s-err .sdot{background:var(--err);animation:pls .6s infinite;}
+.s-idle .stxt{color:var(--t2);} .s-run .stxt{color:var(--ok);} .s-err .stxt{color:var(--err);}
+.tb-right{display:flex;align-items:center;gap:8px;}
+.tb-ts{font-size:9px;color:var(--t2);}
+.tb-btn{background:none;border:1px solid var(--b0);color:var(--t2);
+  padding:4px 10px;cursor:pointer;font-size:9px;transition:.15s;letter-spacing:.04em;}
+.tb-btn:hover{border-color:var(--brand);color:var(--brand);}
+.tb-btn.danger{border-color:var(--err);color:var(--err);}
+.tb-btn.danger:hover{background:var(--err-s);}
+.tb-btn.run-btn{border-color:var(--ok);color:var(--ok);}
+.tb-btn.run-btn:hover{background:var(--ok-s);}
 
 /* KPI BAR */
 .kpi-bar{display:grid;grid-template-columns:repeat(8,1fr);
-  background:var(--bg1);border-bottom:2px solid var(--b0);flex-shrink:0;}
-.kpi-c{padding:7px 10px;border-right:1px solid var(--b0);transition:.15s;}
+  background:var(--bg1);border-bottom:1px solid var(--b0);flex-shrink:0;}
+.kpi-c{padding:8px 12px;border-right:1px solid var(--b0);cursor:default;transition:.15s;}
 .kpi-c:last-child{border-right:none;}
 .kpi-c:hover{background:var(--bg2);}
-.kpi-v{font-family:var(--px);font-size:13px;line-height:1.2;color:var(--t0);}
-.kpi-v.accent{color:var(--brand);} .kpi-v.ok{color:var(--ok);} .kpi-v.warn{color:var(--warn);} .kpi-v.err{color:var(--err);}
-.kpi-l{font-size:8px;color:var(--t2);margin-top:3px;}
+.kpi-v{font-size:14px;font-weight:700;line-height:1.2;color:var(--t0);font-variant-numeric:tabular-nums;}
+.kpi-v.ok{color:var(--ok);} .kpi-v.warn{color:var(--warn);} .kpi-v.err{color:var(--err);}
+.kpi-v.brand{color:var(--brand);} .kpi-v.pur{color:var(--pur);}
+.kpi-l{font-size:8px;color:var(--t2);margin-top:2px;letter-spacing:.04em;}
 
-/* 3-COL WORKSPACE */
-.workspace{flex:1;display:grid;grid-template-columns:178px 1fr 298px;overflow:hidden;}
+/* WORKSPACE */
+.workspace{flex:1;display:grid;grid-template-columns:190px 1fr 290px;overflow:hidden;}
 
-/* SIDEBAR */
-.sidebar{background:var(--bg1);border-right:2px solid var(--b0);
-  display:flex;flex-direction:column;overflow:hidden;}
-.sb-head{padding:8px 10px;font-family:var(--px);font-size:7px;
-  color:var(--brand);border-bottom:1px solid var(--b0);letter-spacing:.1em;flex-shrink:0;}
-.sb-filter{display:flex;gap:3px;padding:5px 8px;flex-shrink:0;border-bottom:1px solid var(--b0);}
-.sb-f{font-size:8px;font-weight:700;padding:2px 7px;border:1px solid var(--b0);cursor:pointer;
-  color:var(--t2);transition:.15s;font-family:var(--px);}
-.sb-f.active{border-color:var(--brand);color:var(--brand);background:var(--brand-s);}
-.sb-list{flex:1;overflow-y:auto;padding:4px 6px;}
-.sb-list::-webkit-scrollbar{width:3px;}
-.sb-list::-webkit-scrollbar-thumb{background:var(--b0);}
-.sb-agent{display:flex;align-items:center;gap:7px;padding:5px 6px;
-  cursor:pointer;transition:.15s;border:1px solid transparent;margin-bottom:2px;}
-.sb-agent:hover{background:var(--bg3);}
-.sb-agent.selected{border-color:var(--brand);background:var(--brand-s);}
-.sb-avatar{width:26px;height:26px;border:1px solid var(--b0);
-  display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
-.sb-agent.working .sb-avatar{border-color:var(--ok);animation:borderGlow 1.4s infinite;}
-.sb-agent.waiting .sb-avatar{border-color:var(--warn);}
-.sb-info{flex:1;min-width:0;}
-.sb-name{font-size:8px;font-weight:700;color:var(--t0);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--px);}
-.sb-badge{display:inline-block;font-size:7px;font-weight:700;padding:1px 5px;margin-top:2px;font-family:var(--px);}
-.sb-badge.working{background:rgba(63,185,80,.15);color:var(--ok);}
-.sb-badge.waiting{background:rgba(210,153,34,.15);color:var(--warn);}
-.sb-badge.idle{background:var(--bg3);color:var(--t2);}
-.sb-health{padding:6px 8px;border-top:1px solid var(--b0);flex-shrink:0;}
-.sb-hr{display:flex;justify-content:space-between;padding:2px 0;font-size:9px;}
-.sb-hl{color:var(--t2);}
-.sb-hv.ok{color:var(--ok);} .sb-hv.warn{color:var(--warn);} .sb-hv.err{color:var(--err);} .sb-hv.info{color:var(--info);}
+/* LEFT SIDEBAR */
+.sidebar{background:var(--bg1);border-right:1px solid var(--b0);display:flex;flex-direction:column;overflow:hidden;}
+.sb-hd{padding:9px 12px;font-size:8px;font-weight:700;letter-spacing:.12em;
+  color:var(--brand);border-bottom:1px solid var(--b0);text-transform:uppercase;}
+.sb-agents{flex:1;overflow-y:auto;padding:4px;}
+.sb-agents::-webkit-scrollbar{width:2px;} .sb-agents::-webkit-scrollbar-thumb{background:var(--b0);}
+.agent-card{display:flex;align-items:center;gap:8px;padding:6px 8px;
+  cursor:pointer;border:1px solid transparent;margin-bottom:2px;transition:.12s;}
+.agent-card:hover{background:var(--bg3);}
+.agent-card.selected{border-color:var(--brand);background:var(--brand-s);}
+.agent-card.working{border-color:rgba(63,185,80,.3);background:var(--ok-g);}
+.agent-card.waiting{border-color:rgba(210,153,34,.2);}
+.ac-icon{width:28px;height:28px;border:1px solid var(--b0);display:flex;align-items:center;
+  justify-content:center;font-size:13px;flex-shrink:0;transition:.12s;}
+.agent-card.working .ac-icon{border-color:var(--ok);box-shadow:0 0 6px rgba(63,185,80,.2);}
+.agent-card.waiting .ac-icon{border-color:var(--warn);}
+.ac-info{flex:1;min-width:0;}
+.ac-name{font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ac-status{font-size:8px;margin-top:1px;}
+.ac-status.working{color:var(--ok);} .ac-status.waiting{color:var(--warn);} .ac-status.idle{color:var(--t2);}
+.sb-proposals{border-top:1px solid var(--b0);padding:8px;flex-shrink:0;max-height:120px;overflow:hidden;}
+.sb-ph{font-size:8px;color:var(--pur);font-weight:700;letter-spacing:.08em;margin-bottom:5px;}
+.sb-p-item{font-size:9px;color:var(--t1);padding:2px 0;border-bottom:1px solid var(--b0);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
+.sb-p-item:hover{color:var(--t0);}
+.sb-p-empty{font-size:9px;color:var(--t2);font-style:italic;}
 
-/* CENTER OFFICE CANVAS */
-.office-wrap{background:var(--bg0);display:flex;align-items:flex-start;
-  justify-content:center;overflow:auto;padding:8px;}
-.office-wrap canvas{image-rendering:pixelated;display:block;}
-#pixi-fb{color:var(--t2);font-size:10px;padding:30px;text-align:center;}
+/* CENTER */
+.center{background:var(--bg0);display:flex;flex-direction:column;overflow:hidden;}
+.pipeline-wrap{padding:12px 16px;flex-shrink:0;border-bottom:1px solid var(--b0);}
+.pipeline-title{font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t2);margin-bottom:8px;text-transform:uppercase;}
+.pipeline-row{display:flex;align-items:center;gap:0;margin-bottom:4px;}
+.pa{display:flex;align-items:center;gap:5px;padding:5px 8px;
+  border:1px solid var(--b0);background:var(--bg2);flex:1;min-width:0;
+  cursor:pointer;transition:.12s;position:relative;}
+.pa:hover{border-color:var(--b1);background:var(--bg3);}
+.pa.working{border-color:var(--ok);background:rgba(63,185,80,.05);}
+.pa.waiting{border-color:var(--warn);opacity:.7;}
+.pa.done{border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.04);}
+.pa-icon{font-size:10px;flex-shrink:0;}
+.pa-name{font-size:8px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pa-phase{font-size:7px;color:var(--t2);position:absolute;top:2px;right:4px;}
+.pa-dot{position:absolute;bottom:3px;right:4px;width:5px;height:5px;border-radius:50%;}
+.pa.working .pa-dot{background:var(--ok);animation:pls 1s infinite;}
+.pa.done .pa-dot{background:var(--ok);}
+.pa.waiting .pa-dot{background:var(--warn);}
+.pa.idle .pa-dot{background:var(--t2);}
+.arr{color:var(--b1);font-size:10px;padding:0 2px;flex-shrink:0;}
+.log-section{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.log-tabs{display:flex;border-bottom:1px solid var(--b0);flex-shrink:0;}
+.log-tab{padding:5px 12px;font-size:8px;font-weight:700;cursor:pointer;
+  color:var(--t2);border-right:1px solid var(--b0);letter-spacing:.06em;transition:.12s;}
+.log-tab.active{color:var(--brand);background:var(--brand-s);}
+.log-tab:hover:not(.active){color:var(--t1);}
+.log-tail{flex:1;overflow-y:auto;padding:6px 12px;font-family:'SF Mono',Menlo,monospace;font-size:10px;}
+.log-tail::-webkit-scrollbar{width:2px;} .log-tail::-webkit-scrollbar-thumb{background:var(--b0);}
+.log-line{padding:1px 0;line-height:1.5;}
+.log-line.ok{color:var(--ok);} .log-line.warn{color:var(--warn);} .log-line.err{color:var(--err);}
+.log-line.info{color:var(--t2);} .log-line.normal{color:var(--t1);}
 
 /* RIGHT PANEL */
-.right-panel{background:var(--bg1);border-left:2px solid var(--b0);
-  display:flex;flex-direction:column;overflow:hidden;}
-.rp-tabs{display:flex;border-bottom:2px solid var(--b0);flex-shrink:0;}
-.rp-tab{flex:1;padding:7px 2px;text-align:center;font-size:8px;font-weight:700;
-  cursor:pointer;color:var(--t2);border-right:1px solid var(--b0);
-  font-family:var(--px);transition:.15s;}
+.right{background:var(--bg1);border-left:1px solid var(--b0);display:flex;flex-direction:column;overflow:hidden;}
+.rp-tabs{display:flex;border-bottom:1px solid var(--b0);flex-shrink:0;}
+.rp-tab{flex:1;padding:8px 4px;text-align:center;font-size:8px;font-weight:700;
+  cursor:pointer;color:var(--t2);border-right:1px solid var(--b0);letter-spacing:.04em;transition:.12s;}
 .rp-tab:last-child{border-right:none;}
 .rp-tab.active{color:var(--brand);background:var(--brand-s);}
-.rp-tab:hover:not(.active){color:var(--t1);}
 .rp-pane{flex:1;overflow-y:auto;display:none;flex-direction:column;}
 .rp-pane.active{display:flex;}
-.rp-pane::-webkit-scrollbar{width:3px;}
-.rp-pane::-webkit-scrollbar-thumb{background:var(--b0);}
+.rp-pane::-webkit-scrollbar{width:2px;} .rp-pane::-webkit-scrollbar-thumb{background:var(--b0);}
+
+/* CMD PANEL */
+.cmd-section{padding:10px 12px;border-bottom:1px solid var(--b0);}
+.cmd-hd{font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--t2);margin-bottom:7px;text-transform:uppercase;}
+.cmd-btns{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.cmd-btn{padding:7px 8px;border:1px solid var(--b0);background:none;
+  color:var(--t1);cursor:pointer;font-size:9px;font-weight:700;text-align:center;transition:.15s;}
+.cmd-btn:hover{background:var(--bg3);}
+.cmd-btn.run{border-color:var(--ok);color:var(--ok);}
+.cmd-btn.run:hover{background:var(--ok-s);}
+.cmd-btn.stop{border-color:var(--err);color:var(--err);}
+.cmd-btn.stop:hover{background:var(--err-s);}
+.cmd-input-row{display:flex;gap:5px;margin-top:6px;}
+.cmd-input{flex:1;background:var(--bg2);border:1px solid var(--b0);
+  color:var(--t0);padding:5px 8px;font-size:9px;outline:none;transition:.15s;}
+.cmd-input:focus{border-color:var(--brand);}
+.cmd-exec{background:var(--brand);color:#fff;border:none;padding:5px 10px;
+  cursor:pointer;font-size:9px;font-weight:700;}
+
+/* SETTINGS */
+.set-section{padding:10px 12px;border-bottom:1px solid var(--b0);}
+.set-row{margin-bottom:7px;}
+.set-label{font-size:8px;color:var(--t2);margin-bottom:3px;letter-spacing:.04em;text-transform:uppercase;}
+.set-input{width:100%;background:var(--bg2);border:1px solid var(--b0);
+  color:var(--t0);padding:5px 8px;font-size:9px;font-family:monospace;outline:none;transition:.15s;}
+.set-input:focus{border-color:var(--brand);}
+.set-save{width:100%;padding:6px;background:none;border:1px solid var(--brand);
+  color:var(--brand);cursor:pointer;font-size:9px;font-weight:700;margin-top:5px;transition:.15s;}
+.set-save:hover{background:var(--brand-s);}
+
+/* REVENUE */
+.rev-section{padding:10px 12px;border-bottom:1px solid var(--b0);}
+.rev-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.rev-amount{font-size:18px;font-weight:700;color:var(--ok);}
+.rev-label{font-size:8px;color:var(--t2);}
+.rev-progress{height:4px;background:var(--b0);margin-bottom:8px;}
+.rev-progress-bar{height:100%;background:var(--ok);transition:width .5s;}
+.rev-platforms{display:grid;gap:3px;}
+.rev-row{display:flex;justify-content:space-between;font-size:9px;padding:2px 0;border-bottom:1px solid var(--b0);}
+.rev-row:last-child{border-bottom:none;}
+.rev-name{color:var(--t2);} .rev-val{color:var(--t0);font-weight:700;}
+
+/* CHAT */
+.chat-msgs{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:5px;}
+.chat-msgs::-webkit-scrollbar{width:2px;} .chat-msgs::-webkit-scrollbar-thumb{background:var(--b0);}
+.cm{max-width:95%;padding:6px 9px;font-size:10.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;}
+.cm.user{background:var(--brand-s);border:1px solid rgba(88,166,255,.2);color:var(--t0);align-self:flex-end;}
+.cm.ai{background:var(--bg2);border:1px solid var(--b0);color:var(--t1);align-self:flex-start;}
+.cm.sys{background:var(--warn-s);border:1px solid rgba(210,153,34,.15);color:var(--warn);align-self:center;font-size:9px;}
+.chat-typing{color:var(--t2);font-size:9px;padding:2px 10px;animation:pls .8s infinite;flex-shrink:0;}
+.chat-row{display:flex;gap:4px;padding:7px 8px;border-top:1px solid var(--b0);flex-shrink:0;}
+.chat-row textarea{flex:1;background:var(--bg2);border:1px solid var(--b0);color:var(--t0);
+  padding:5px 8px;font-size:10px;font-family:inherit;outline:none;resize:none;transition:.15s;}
+.chat-row textarea:focus{border-color:var(--brand);}
+.chat-send{background:var(--brand);color:#fff;border:none;padding:5px 10px;cursor:pointer;font-size:10px;font-weight:700;}
+.chat-send:disabled{opacity:.4;cursor:not-allowed;}
 
 /* AGENT DETAIL */
-.ad-head{display:flex;align-items:center;gap:9px;padding:10px 12px;
-  border-bottom:1px solid var(--b0);flex-shrink:0;}
-.ad-icon{width:36px;height:36px;border:1px solid var(--b0);
-  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-.ad-name{font-size:11px;font-weight:700;color:var(--t0);}
+.ad-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--b0);}
+.ad-icon{width:36px;height:36px;border:1px solid var(--b0);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.ad-name{font-size:11px;font-weight:700;}
 .ad-badges{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
-.badge{display:inline-flex;padding:2px 6px;font-size:8.5px;font-weight:700;}
+.badge{display:inline-flex;padding:2px 6px;font-size:8px;font-weight:700;}
 .b-ok{background:var(--ok-s);color:var(--ok);}
 .b-warn{background:var(--warn-s);color:var(--warn);}
 .b-brand{background:var(--brand-s);color:var(--brand);}
-.b-pur{background:var(--pur-s);color:var(--pur);}
-.b-info{background:var(--info-s);color:var(--info);}
-.ad-desc{padding:8px 12px;font-size:10.5px;color:var(--t1);line-height:1.6;
-  border-bottom:1px solid var(--b0);}
+.b-pur{background:rgba(188,140,255,.12);color:var(--pur);}
+.ad-desc{padding:8px 12px;font-size:10px;color:var(--t1);line-height:1.6;border-bottom:1px solid var(--b0);}
 .ad-sec{padding:7px 12px;}
-.ad-sl{font-size:8px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--t2);margin-bottom:5px;font-family:var(--px);}
-.file-item{display:flex;align-items:center;gap:5px;font-size:10px;padding:2px 0;}
-.file-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.ad-sl{font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t2);margin-bottom:5px;}
+.file-item{display:flex;align-items:center;gap:5px;font-size:9.5px;padding:2px 0;}
+.file-dot{width:5px;height:5px;border-radius:50%;}
 .file-dot.ok{background:var(--ok);} .file-dot.miss{background:var(--b0);}
-.file-path{color:var(--t1);font-family:'SF Mono',Menlo,monospace;font-size:9.5px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px;}
-.file-age{font-size:9px;color:var(--t2);white-space:nowrap;flex-shrink:0;}
+.file-path{color:var(--t1);font-family:monospace;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px;}
+.file-age{font-size:8px;color:var(--t2);white-space:nowrap;}
 .pills{display:flex;flex-wrap:wrap;gap:3px;}
-.pill{font-size:8.5px;padding:2px 6px;white-space:nowrap;}
+.pill{font-size:8px;padding:2px 6px;}
 .pill.sk{background:var(--brand-s);color:var(--brand);}
 .pill.sk-x{background:var(--bg3);color:var(--t2);}
 .pill.hk{background:var(--ok-s);color:var(--ok);}
 .pill.hk-x{background:var(--err-s);color:var(--err);}
-.empty{color:var(--t2);font-style:italic;font-size:10px;padding:4px 0;}
-
-/* FEED */
-.feed-body{padding:6px 10px;}
-.fi{display:flex;gap:7px;padding:5px 0;border-bottom:1px solid var(--b0);}
-.fi:last-child{border-bottom:none;}
-.fi-dot{width:6px;height:6px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.fi-dot.success{background:var(--ok);} .fi-dot.warn{background:var(--warn);}
-.fi-dot.error{background:var(--err);} .fi-dot.info{background:var(--t2);}
-.fi-b{flex:1;min-width:0;}
-.fi-badge{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;margin-bottom:2px;}
-.fi-msg{font-size:10px;color:var(--t1);line-height:1.5;word-break:break-word;}
-.fi-t{font-size:9px;color:var(--t2);margin-top:1px;}
-
-/* CHAT */
-.chat-msgs{flex:1;overflow-y:auto;padding:9px 10px;
-  display:flex;flex-direction:column;gap:6px;min-height:80px;}
-.chat-msgs::-webkit-scrollbar{width:3px;}
-.chat-msgs::-webkit-scrollbar-thumb{background:var(--b0);}
-.cm{max-width:94%;padding:6px 9px;font-size:11px;line-height:1.6;white-space:pre-wrap;}
-.cm.user{background:var(--brand-s);border:1px solid var(--brand-m);color:var(--t0);align-self:flex-end;}
-.cm.ai{background:var(--bg2);border:1px solid var(--b0);color:var(--t1);align-self:flex-start;}
-.cm.sys{background:var(--warn-s);border:1px solid rgba(210,153,34,.2);
-  color:var(--warn);align-self:center;font-size:9.5px;text-align:center;}
-.chat-typing{color:var(--t2);font-size:9px;padding:2px 10px;animation:pls 1s infinite;flex-shrink:0;}
-.chat-row{display:flex;gap:5px;padding:7px 8px;border-top:1px solid var(--b0);flex-shrink:0;}
-.chat-in{flex:1;background:var(--bg2);border:1px solid var(--b0);
-  color:var(--t0);padding:5px 9px;font-size:10.5px;font-family:inherit;
-  outline:none;resize:none;transition:border-color .2s;}
-.chat-in:focus{border-color:var(--brand);}
-.chat-send{background:var(--brand);color:#fff;border:none;
-  padding:5px 11px;cursor:pointer;font-size:10.5px;font-weight:700;transition:.15s;}
-.chat-send:hover{background:#4493e0;}
-.chat-send:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ARTICLES */
-.arts-body{padding:5px 8px;}
-.art-item{display:flex;align-items:center;gap:7px;padding:5px 3px;
-  cursor:pointer;transition:.15s;border-bottom:1px solid var(--b0);}
+.arts-list{padding:4px 8px;}
+.art-item{display:flex;align-items:center;gap:7px;padding:5px 3px;cursor:pointer;
+  transition:.12s;border-bottom:1px solid var(--b0);}
 .art-item:hover{background:var(--bg3);}
-.art-item:last-child{border-bottom:none;}
-.art-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex-shrink:0;}
-.art-title{flex:1;font-size:10px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.art-w{font-size:9px;color:var(--t2);flex-shrink:0;}
+.art-dot{width:5px;height:5px;border-radius:50%;background:var(--ok);flex-shrink:0;}
+.art-title{flex:1;font-size:9.5px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.art-w{font-size:8px;color:var(--t2);}
 
 /* MODAL */
 .modal-ov{display:none;position:fixed;inset:0;z-index:500;
-  background:rgba(0,0,0,.75);backdrop-filter:blur(5px);
-  align-items:flex-start;justify-content:center;padding:36px 20px;}
+  background:rgba(0,0,0,.8);backdrop-filter:blur(4px);
+  align-items:flex-start;justify-content:center;padding:30px 20px;}
 .modal-ov.open{display:flex;}
-.modal-box{background:var(--bg1);border:1px solid var(--b0);
-  width:100%;max-width:800px;max-height:85vh;display:flex;flex-direction:column;
-  box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.modal-box{background:var(--bg1);border:1px solid var(--b0);width:100%;max-width:800px;
+  max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6);}
 .modal-hd{padding:10px 16px;border-bottom:1px solid var(--b0);
-  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.modal-title{font-size:12px;font-weight:700;color:var(--t0);}
+  display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-size:12px;font-weight:700;}
 .modal-close{width:24px;height:24px;background:var(--bg2);border:1px solid var(--b0);
-  color:var(--t2);cursor:pointer;font-size:12px;
-  display:flex;align-items:center;justify-content:center;transition:.2s;}
+  color:var(--t2);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;}
 .modal-close:hover{border-color:var(--brand);color:var(--brand);}
-.modal-bd{flex:1;overflow-y:auto;padding:14px 18px;
-  font-family:'SF Mono',Menlo,monospace;font-size:11.5px;
+.modal-bd{flex:1;overflow-y:auto;padding:14px 18px;font-family:monospace;font-size:11px;
   line-height:1.9;color:var(--t1);white-space:pre-wrap;word-break:break-word;}
-.modal-bd::-webkit-scrollbar{width:4px;}
-.modal-bd::-webkit-scrollbar-thumb{background:var(--b0);}
-.modal-ft{padding:6px 16px;border-top:1px solid var(--b0);
-  font-size:9.5px;color:var(--t2);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.modal-ft{padding:6px 16px;border-top:1px solid var(--b0);font-size:9px;color:var(--t2);
+  display:flex;align-items:center;gap:8px;}
 .devto-btn{background:var(--ok-s);color:var(--ok);border:1px solid rgba(63,185,80,.3);
-  padding:3px 10px;font-size:9.5px;cursor:pointer;font-weight:700;transition:.2s;}
-.devto-btn:hover{background:rgba(63,185,80,.2);}
-.ch{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;
-  border-bottom:1px solid var(--b0);flex-shrink:0;}
-.ct{font-size:8.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--t2);display:flex;align-items:center;gap:5px;}
-.cdot2{width:5px;height:5px;border-radius:50%;}
+  padding:3px 10px;font-size:9px;cursor:pointer;font-weight:700;}
+
+/* ALERT OVERLAY */
+.alert-ov{display:none;position:fixed;inset:0;z-index:900;
+  background:rgba(0,0,0,.88);align-items:center;justify-content:center;}
+.alert-ov.show{display:flex;animation:alertIn .2s ease;}
+.alert-box{padding:36px 56px;text-align:center;position:relative;overflow:hidden;
+  border:2px solid var(--err);background:rgba(248,81,73,.04);max-width:480px;
+  animation:borderPulse .8s infinite;}
+.alert-box.warn-type{border-color:var(--warn);background:rgba(210,153,34,.04);animation:warnPulse 1s infinite;}
+.alert-scan{position:absolute;left:0;right:0;height:2px;background:rgba(248,81,73,.25);
+  animation:scan 2s linear infinite;}
+.alert-box.warn-type .alert-scan{background:rgba(210,153,34,.2);}
+.alert-level{font-size:9px;font-weight:700;letter-spacing:.2em;color:var(--err);margin-bottom:12px;}
+.alert-box.warn-type .alert-level{color:var(--warn);}
+.alert-title{font-size:22px;font-weight:700;color:var(--t0);margin-bottom:8px;}
+.alert-desc{font-size:11px;color:var(--t1);line-height:1.7;margin-bottom:20px;}
+.alert-close{padding:8px 24px;border:1px solid var(--err);color:var(--err);
+  background:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.08em;}
+.alert-close:hover{background:var(--err-s);}
+.alert-box.warn-type .alert-close{border-color:var(--warn);color:var(--warn);}
+body.alerting::before{content:'';position:fixed;inset:0;z-index:800;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(248,81,73,.015) 0px,rgba(248,81,73,.015) 1px,transparent 1px,transparent 4px);}
 </style>
 </head>
 <body>
 
 <nav class="topbar">
   <div style="display:flex;align-items:center;gap:12px;">
-    <div class="logo">⬡ AI FACTORY<span class="logo-v">v9 HQ</span></div>
-    <div class="spill si" id="spill"><span class="sdot"></span><span class="stxt">INIT</span></div>
+    <div class="logo">⬡ AI FACTORY <span class="logo-sub">COMMAND CENTER v9</span></div>
+    <div class="status-pill s-idle" id="spill"><span class="sdot"></span><span class="stxt" id="stxt">INIT</span></div>
   </div>
-  <div class="tb-r">
-    <span class="ts-t" id="ts">--</span>
-    <span style="color:var(--t2)">·</span>
-    <span class="cdt" id="cdt">5s</span>
-    <button class="rbtn" onclick="fetchNow()">⟳ REFRESH</button>
+  <div class="tb-right">
+    <span class="tb-ts" id="ts">--</span>
+    <button class="tb-btn run-btn" onclick="triggerRun()">▶ 立即執行</button>
+    <button class="tb-btn danger" onclick="triggerStop()">⏹ 停止</button>
+    <button class="tb-btn" onclick="fetchNow()">⟳ 更新</button>
   </div>
 </nav>
 
-<div class="warn-strip" id="wstrip">⚠ WHOP 連結尚未設定 — CLAUDE.md 含 PLACEHOLDER_WHOP_*</div>
-
 <div class="kpi-bar">
-  <div class="kpi-c"><div class="kpi-v accent" id="k0">0</div><div class="kpi-l">今日產出</div></div>
+  <div class="kpi-c"><div class="kpi-v brand" id="k0">0</div><div class="kpi-l">今日產出</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k1">0</div><div class="kpi-l">文章總數</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k2">0</div><div class="kpi-l">API 今日</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k3">0</div><div class="kpi-l">API 累計</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k4">--</div><div class="kpi-l">系統健康</div></div>
-  <div class="kpi-c"><div class="kpi-v" id="k5" style="font-size:9px;">--</div><div class="kpi-l">模型</div></div>
-  <div class="kpi-c"><div class="kpi-v ok" id="k6">$0</div><div class="kpi-l">本月收益</div></div>
-  <div class="kpi-c"><div class="kpi-v warn" id="k7">-$200</div><div class="kpi-l">距損益平衡</div></div>
+  <div class="kpi-c"><div class="kpi-v ok" id="k5">$0</div><div class="kpi-l">本月收益</div></div>
+  <div class="kpi-c"><div class="kpi-v warn" id="k6">-$200</div><div class="kpi-l">距損益平衡</div></div>
+  <div class="kpi-c"><div class="kpi-v" id="k7" style="font-size:9px;">--</div><div class="kpi-l">模型</div></div>
 </div>
 
 <div class="workspace">
-
-  <!-- LEFT SIDEBAR -->
   <div class="sidebar">
-    <div class="sb-head">▣ TEAM STATUS</div>
-    <div class="sb-filter">
-      <div class="sb-f active" onclick="setSbFilter('all',this)">ALL</div>
-      <div class="sb-f" onclick="setSbFilter('working',this)">WORK</div>
-      <div class="sb-f" onclick="setSbFilter('idle',this)">IDLE</div>
+    <div class="sb-hd">▣ TEAM STATUS</div>
+    <div class="sb-agents" id="sb-agents"></div>
+    <div class="sb-proposals" id="sb-proposals">
+      <div class="sb-ph">● 提案待審核</div>
+      <div class="sb-p-empty">載入中...</div>
     </div>
-    <div class="sb-list" id="sb-list"></div>
-    <div class="sb-health" id="sb-health"></div>
   </div>
 
-  <!-- CENTER OFFICE CANVAS -->
-  <div class="office-wrap" id="office-wrap">
-    <div id="pixi-fb">PixiJS 載入中...<br><small style="color:var(--t2)">需要網路連線至 cdn.jsdelivr.net</small></div>
+  <div class="center">
+    <div class="pipeline-wrap">
+      <div class="pipeline-title">▸ PIPELINE STATUS</div>
+      <div class="pipeline-row" id="pipe-row1"></div>
+      <div class="pipeline-row" id="pipe-row2"></div>
+    </div>
+    <div class="log-section">
+      <div class="log-tabs">
+        <div class="log-tab active" onclick="switchLog('cron',this)">CRON.LOG</div>
+        <div class="log-tab" onclick="switchLog('error',this)">ERROR.LOG</div>
+        <div class="log-tab" onclick="switchLog('standup',this)">STANDUP</div>
+      </div>
+      <div class="log-tail" id="log-display"></div>
+    </div>
   </div>
 
-  <!-- RIGHT PANEL -->
-  <div class="right-panel">
+  <div class="right">
     <div class="rp-tabs">
-      <div class="rp-tab active" onclick="switchTab('detail',this)">AGENT</div>
-      <div class="rp-tab" onclick="switchTab('feed',this)">活動</div>
+      <div class="rp-tab active" onclick="switchTab('agent',this)">AGENT</div>
+      <div class="rp-tab" onclick="switchTab('cmd',this)">指令</div>
+      <div class="rp-tab" onclick="switchTab('rev',this);fetchRevenue()">收益</div>
       <div class="rp-tab" onclick="switchTab('chat',this)">聊天</div>
       <div class="rp-tab" onclick="switchTab('arts',this)">文章</div>
-      <div class="rp-tab" onclick="switchTab('standup',this);loadStandup()">DAILY</div>
     </div>
-    <div class="rp-pane active" id="pane-detail">
-      <div id="ad-inner">
-        <div style="padding:20px;text-align:center;color:var(--t2);font-size:10px;">
-          點擊左側房間查看 Agent 詳情
+
+    <div class="rp-pane active" id="pane-agent">
+      <div id="ad-inner" style="padding:20px;text-align:center;color:var(--t2);font-size:10px;">
+        點擊左側 Agent 查看詳情
+      </div>
+    </div>
+
+    <div class="rp-pane" id="pane-cmd">
+      <div class="cmd-section">
+        <div class="cmd-hd">快速指令</div>
+        <div class="cmd-btns">
+          <button class="cmd-btn run" onclick="triggerRun()">▶ 立即執行</button>
+          <button class="cmd-btn stop" onclick="triggerStop()">⏹ 停止任務</button>
+        </div>
+        <div class="cmd-input-row">
+          <input class="cmd-input" id="topic-input" placeholder="強制指定主題...">
+          <button class="cmd-exec" onclick="triggerTopic()">執行</button>
         </div>
       </div>
-    </div>
-    <div class="rp-pane" id="pane-feed">
-      <div class="ch" style="flex-shrink:0;">
-        <div class="ct"><span class="cdot2" style="background:var(--brand);animation:pls 2s infinite;"></span>活動流</div>
+      <div class="set-section">
+        <div class="cmd-hd">系統設定</div>
+        <div class="set-row">
+          <div class="set-label">Minimax API Token</div>
+          <input class="set-input" id="set-token" type="password" placeholder="已設定" autocomplete="off">
+        </div>
+        <div class="set-row">
+          <div class="set-label">Whop Guide ($9)</div>
+          <input class="set-input" id="set-whop-guide" placeholder="https://whop.com/...">
+        </div>
+        <div class="set-row">
+          <div class="set-label">Whop Pack ($19)</div>
+          <input class="set-input" id="set-whop-pack" placeholder="https://whop.com/...">
+        </div>
+        <div class="set-row">
+          <div class="set-label">Whop Sub ($5/月)</div>
+          <input class="set-input" id="set-whop-sub" placeholder="https://whop.com/...">
+        </div>
+        <button class="set-save" onclick="saveSettings()">💾 儲存設定</button>
       </div>
-      <div class="feed-body" id="feed-list" style="flex:1;overflow-y:auto;"></div>
     </div>
+
+    <div class="rp-pane" id="pane-rev">
+      <div class="rev-section">
+        <div class="rev-total">
+          <div>
+            <div class="rev-amount" id="rev-total-amt">$0</div>
+            <div class="rev-label">本月總收益</div>
+          </div>
+          <div style="text-align:right">
+            <div class="rev-amount" style="color:var(--warn)" id="rev-gap-amt">-$200</div>
+            <div class="rev-label">損益缺口</div>
+          </div>
+        </div>
+        <div class="rev-progress"><div class="rev-progress-bar" id="rev-bar" style="width:0%"></div></div>
+        <div class="rev-platforms" id="rev-platforms">載入中...</div>
+      </div>
+    </div>
+
     <div class="rp-pane" id="pane-chat">
-      <div class="ch" style="flex-shrink:0;">
-        <div class="ct"><span class="cdot2" style="background:var(--brand)"></span>控制台聊天</div>
-        <span style="font-size:8px;color:var(--t2)">系統感知</span>
-      </div>
       <div class="chat-msgs" id="chat-msgs">
-        <div class="cm sys">AI 助手就緒 — 詢問系統狀態或設定問題</div>
+        <div class="cm sys">AI 助手就緒 — 詢問系統狀態或下達指令</div>
       </div>
-      <div id="chat-typing" class="chat-typing" style="display:none;">AI 回覆中...</div>
+      <div id="chat-typing" class="chat-typing" style="display:none">AI 回覆中...</div>
       <div class="chat-row">
-        <textarea class="chat-in" id="chat-in" rows="2"
-          placeholder="目前狀態？如何設定 API？" onkeydown="chatKey(event)"></textarea>
+        <textarea id="chat-in" rows="2" placeholder="詢問狀態、設定問題..." onkeydown="chatKey(event)"></textarea>
         <button class="chat-send" id="chat-btn" onclick="sendChat()">送出</button>
       </div>
     </div>
+
     <div class="rp-pane" id="pane-arts">
-      <div class="ch" style="flex-shrink:0;">
-        <div class="ct"><span class="cdot2" style="background:var(--ok)"></span>文章庫</div>
+      <div style="padding:8px 12px;border-bottom:1px solid var(--b0);display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--t2);">文章庫</span>
         <span id="arts-count" style="font-size:9px;color:var(--t2)"></span>
       </div>
-      <div class="arts-body" id="arts-list" style="flex:1;overflow-y:auto;"></div>
-    </div>
-    <div class="rp-pane" id="pane-standup">
-      <div class="ch" style="flex-shrink:0;">
-        <div class="ct"><span class="cdot2" style="background:var(--pur);animation:pls 3s infinite;"></span>每日 Standup</div>
-        <span style="font-size:8px;color:var(--t2)">08/16/00 自動</span>
-      </div>
-      <div id="standup-body" style="flex:1;overflow-y:auto;padding:10px;font-size:9px;line-height:1.7;color:var(--t1);white-space:pre-wrap;"></div>
+      <div class="arts-list" id="arts-list"></div>
     </div>
   </div>
+</div>
 
-</div><!-- /workspace -->
-
-<!-- MODAL -->
 <div class="modal-ov" id="modal" onclick="closeModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div class="modal-hd">
@@ -805,460 +904,348 @@ body{display:flex;flex-direction:column;}
     </div>
     <div class="modal-bd" id="mbody">載入中...</div>
     <div class="modal-ft">
-      <span id="mfoot" style="flex:1;"></span>
+      <span id="mfoot" style="flex:1"></span>
       <button class="devto-btn" id="devto-btn" onclick="postToDevto()">→ dev.to 草稿</button>
     </div>
   </div>
 </div>
 
+<div class="alert-ov" id="alert-ov">
+  <div class="alert-box" id="alert-box">
+    <div class="alert-scan"></div>
+    <div class="alert-level" id="alert-level">CRITICAL</div>
+    <div class="alert-title" id="alert-title">系統錯誤</div>
+    <div class="alert-desc" id="alert-desc"></div>
+    <button class="alert-close" onclick="closeAlert()">確認</button>
+  </div>
+</div>
+
 <script>
-/* ─── GLOBALS ─── */
-let countdown=5,timer,lastData=null,currentArticleName='';
-let sbFilter='all',selectedId=null;
-let pixiApp=null,roomC={},agentD={},fileAnims=[],prevWId=null;
-const bubTmr={};
+let countdown=5,timer=null,lastData=null,currentArticleName='';
+let selectedAgentId=null,currentLogTab='cron';
 
-/* ─── PIPELINE META (mirrors Python PIPELINE_FLOW) ─── */
 const FM=[
-  {id:'researcher',order:1,label:'研究員',icon:'◎',phase:'探索',desc:'爬蟲 4 個 subreddit，評估需求，找 Amazon 聯盟商品'},
-  {id:'topic-selector',order:2,label:'選題',icon:'◈',phase:'策略',desc:'合併需求信號，決定唯一下一篇主題，避免重複'},
-  {id:'writer',order:3,label:'中文初稿',icon:'✦',phase:'生產',desc:'產出中文教學文章，植入 Whop 銷售連結'},
-  {id:'seo-agent',order:4,label:'SEO',icon:'S',phase:'生產',desc:'產出 3 個標題候選，優化關鍵字位置'},
-  {id:'english-writer',order:5,label:'英文寫手',icon:'E',phase:'生產',desc:'Reddit 摘要版 + Medium 完整版'},
-  {id:'chinese-writer',order:6,label:'中文詮釋',icon:'中',phase:'生產',desc:'詮釋為台灣 Maker 中文版'},
-  {id:'reviewer',order:7,label:'審稿',icon:'◉',phase:'品管',desc:'5 道自動關卡 + 邏輯審查'},
-  {id:'poster',order:8,label:'發文',icon:'◆',phase:'發布',desc:'發布到 Reddit / Medium / dev.to'},
-  {id:'feedback-collector',order:9,label:'回報收集',icon:'F',phase:'回饋',desc:'發文後 24h 收集 upvotes/comments'},
-  {id:'style-updater',order:10,label:'風格進化',icon:'↺',phase:'進化',desc:'根據表現更新 writing-style.md'},
-  {id:'knowledge-subagent',order:11,label:'知識庫',icon:'K',phase:'進化',desc:'任務結束前寫入知識庫'},
+  {id:'researcher',icon:'◎',label:'研究員',phase:'探索'},
+  {id:'topic-selector',icon:'◈',label:'選題',phase:'策略'},
+  {id:'writer',icon:'✦',label:'中文初稿',phase:'生產'},
+  {id:'seo-agent',icon:'S',label:'SEO',phase:'生產'},
+  {id:'english-writer',icon:'E',label:'英文寫手',phase:'生產'},
+  {id:'chinese-writer',icon:'中',label:'中文詮釋',phase:'生產'},
+  {id:'reviewer',icon:'◉',label:'審稿',phase:'品管'},
+  {id:'poster',icon:'◆',label:'發文',phase:'發布'},
+  {id:'feedback-collector',icon:'F',label:'回報收集',phase:'回饋'},
+  {id:'style-updater',icon:'↺',label:'風格進化',phase:'進化'},
+  {id:'knowledge-subagent',icon:'K',label:'知識庫',phase:'進化'},
 ];
-const FMI={};FM.forEach(a=>FMI[a.id]=a);
 
-const PHEX={'探索':0x1F6FEB,'策略':0x8957E5,'生產':0x388BFD,'品管':0xD29922,'發布':0x3FB950,'回饋':0xD29922,'進化':0xBC8CFF};
-const PCSS={'探索':'#1F6FEB','策略':'#8957E5','生產':'#388BFD','品管':'#D29922','發布':'#3FB950','回饋':'#D29922','進化':'#BC8CFF'};
-const SHEX={working:0x3FB950,waiting:0xD29922,idle:0x484F58,done:0x3FB950};
-const FEDC={writer:'#388BFD',researcher:'#1F6FEB',reviewer:'#D29922',poster:'#3FB950','quality-check':'#D29922','topic-selector':'#8957E5',system:'#8B949E',feedback:'#BC8CFF'};
-const BLNS={
-  researcher:['爬蟲中...','分析需求...','找到商品！'],
-  'topic-selector':['比較主題...','避免重複...','已選定！'],
-  writer:['寫作中...','加入範例碼...','完稿！','植入連結...'],
-  'seo-agent':['優化標題...','SEO完成！'],
-  'english-writer':['翻譯中...','英文稿完成！'],
-  'chinese-writer':['詮釋中...','中文稿完成！'],
-  reviewer:['審核中...','品質檢查...','通過 ✓'],
-  poster:['準備發文...','發文成功！'],
-  'feedback-collector':['收集回饋...','數據更新！'],
-  'style-updater':['分析風格...','進化完成！'],
-  'knowledge-subagent':['記錄中...','完成！'],
-};
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-/* ─── ROOM LAYOUT ─── */
-const CIDS=['researcher','topic-selector','writer','reviewer','poster','feedback-collector'];
-const RLYT={'researcher':{c:0,r:0},'topic-selector':{c:1,r:0},'writer':{c:0,r:1},'reviewer':{c:1,r:1},'poster':{c:0,r:2},'feedback-collector':{c:1,r:2}};
-const SIDS=['seo-agent','english-writer','chinese-writer','style-updater','knowledge-subagent'];
-const RW=214,RH=120,RG=12,RP=10,SW=82,SH=60,SG=7;
-const SY=RP+3*(RH+RG)+6;
-const CW=RP*2+RW*2+RG, CH=SY+SH+RP;
-
-function rOrg(id){
-  if(RLYT[id]){const {c,r}=RLYT[id];return{x:RP+c*(RW+RG),y:RP+r*(RH+RG)};}
-  const si=SIDS.indexOf(id);if(si>=0)return{x:RP+si*(SW+SG),y:SY};
-  return null;
-}
-function rCtr(id){
-  const o=rOrg(id);if(!o)return null;
-  const s=SIDS.includes(id);return{x:o.x+(s?SW:RW)/2,y:o.y+(s?SH:RH)/2};
-}
-
-/* ─── PIXI INIT ─── */
-function initPixi(){
-  if(pixiApp)return;
-  if(typeof PIXI==='undefined'){
-    document.getElementById('pixi-fb').innerHTML='<span style="color:var(--err)">PixiJS 載入失敗</span><br><small>請檢查網路或改用純 CSS 版</small>';
-    return;
-  }
-  const fb=document.getElementById('pixi-fb');if(fb)fb.remove();
-  pixiApp=new PIXI.Application({width:CW,height:CH,backgroundColor:0x0D1117,antialias:false,resolution:1});
-  pixiApp.view.style.imageRendering='pixelated';
-  document.getElementById('office-wrap').appendChild(pixiApp.view);
-  buildRooms(); buildAgents();
-  pixiApp.ticker.add(tick);
-}
-
-/* ─── BUILD ROOMS ─── */
-function buildRooms(){
-  Object.values(roomC).forEach(c=>pixiApp.stage.removeChild(c));roomC={};
-  CIDS.forEach(id=>mkRoom(id,RW,RH,false));
-  SIDS.forEach(id=>mkRoom(id,SW,SH,true));
-}
-function mkRoom(id,w,h,isS){
-  const m=FMI[id];if(!m)return;
-  const o=rOrg(id);if(!o)return;
-  const col=PHEX[m.phase]||0x58A6FF;
-  const c=new PIXI.Container();c.x=o.x;c.y=o.y;
-  c.interactive=true;c.cursor='pointer';
-  c.on('pointerdown',()=>onRC(id));
-  c.on('pointerover',()=>hlRoom(c,true));
-  c.on('pointerout',()=>hlRoom(c,false));
-
-  const bg=new PIXI.Graphics();
-  bg.beginFill(0x161B22);bg.drawRect(0,0,w,h);bg.endFill();
-  for(let ty=0;ty<h;ty+=4)for(let tx=0;tx<w;tx+=4){
-    if((Math.floor(tx/4)+Math.floor(ty/4))%2===0){bg.beginFill(0x1A2030,.45);bg.drawRect(tx,ty,4,4);bg.endFill();}
-  }
-  c.addChild(bg);
-
-  const bdr=new PIXI.Graphics();
-  bdr.lineStyle(2,col,.75);bdr.drawRect(0,0,w,h);
-  c.addChild(bdr);c._bdr=bdr;c._col=col;c._w=w;c._h=h;c._hl=false;
-
-  if(!isS){
-    const dk=new PIXI.Graphics();
-    dk.beginFill(0x3D2B1F);dk.drawRect(w/2-22,h-38,44,13);dk.endFill();
-    dk.beginFill(0x2A1C10);dk.drawRect(w/2-18,h-25,6,9);dk.drawRect(w/2+12,h-25,6,9);dk.endFill();
-    c.addChild(dk);
-  }
-  const lbl=new PIXI.Text(m.label,{fontFamily:'Courier New,monospace',fontSize:isS?7:8,fill:col,fontWeight:'bold'});
-  lbl.x=5;lbl.y=5;c.addChild(lbl);
-  const ord=new PIXI.Text('#'+m.order,{fontFamily:'Courier New,monospace',fontSize:7,fill:0x484F58});
-  ord.x=w-ord.width-5;ord.y=5;c.addChild(ord);
-
-  pixiApp.stage.addChild(c);roomC[id]=c;
-}
-function hlRoom(c,on){
-  if(!c._bdr)return;c._hl=on||c._sel;
-  c._bdr.clear();
-  const col=c._hl?0xCCDDFF:c._col;
-  const lw=c._hl?2:1,alpha=c._hl?1:.75;
-  c._bdr.lineStyle(lw,col,alpha);c._bdr.drawRect(0,0,c._w,c._h);
-}
-function selRoom(id){
-  Object.entries(roomC).forEach(([rid,rc])=>{
-    rc._sel=(rid===id);hlRoom(rc,false);
+/* PIPELINE */
+function renderPipeline(data){
+  const flow=data.flow||[],st={};
+  flow.forEach(a=>{st[a.id]=a;});
+  const rows=[FM.slice(0,6),FM.slice(6)];
+  rows.forEach((agents,ri)=>{
+    const el=document.getElementById('pipe-row'+(ri+1));
+    if(!el)return;
+    el.innerHTML=agents.map((a,i)=>{
+      const s=(st[a.id]||{}).status||'idle';
+      return `<div class="pa ${s}" onclick="selectAgent('${a.id}')">
+        <span class="pa-icon">${a.icon}</span>
+        <span class="pa-name">${a.label}</span>
+        <span class="pa-phase">${a.phase}</span>
+        <span class="pa-dot"></span>
+      </div>${i<agents.length-1?'<span class="arr">→</span>':''}`;
+    }).join('');
   });
 }
 
-/* ─── BUILD AGENTS ─── */
-function buildAgents(){
-  Object.values(agentD).forEach(d=>{if(d.c.parent)d.c.parent.removeChild(d.c);});agentD={};
-  [...CIDS,...SIDS].forEach(id=>mkAgent(id));
-}
-function mkAgent(id){
-  const m=FMI[id];if(!m)return;
-  const rc=roomC[id];if(!rc)return;
-  const isS=SIDS.includes(id);
-  const col=PHEX[m.phase]||0x58A6FF;
-  const dk=Math.floor(col*.55);
-  const c=new PIXI.Container();
-  const g=new PIXI.Graphics();
-  if(isS){
-    g.beginFill(col);g.drawCircle(0,-11,5);g.endFill();
-    g.beginFill(dk);g.drawRect(-3,-6,6,8);g.endFill();
-  } else {
-    g.beginFill(col);g.drawCircle(0,-19,7);g.endFill();
-    g.beginFill(dk);g.drawRect(-5,-12,10,12);g.endFill();
-    g.beginFill(0x30363D);g.drawRect(-4,0,3,6);g.drawRect(1,0,3,6);g.endFill();
-  }
-  c.addChild(g);
-  const ico=new PIXI.Text(m.icon,{fontFamily:'monospace',fontSize:isS?8:10,fill:0xE6EDF3});
-  ico.anchor.set(.5);ico.y=isS?-23:-34;c.addChild(ico);
-  const dot=new PIXI.Graphics();c.addChild(dot);c._dot=dot;
-  const bub=new PIXI.Container();bub.visible=false;
-  bub._bg=new PIXI.Graphics();bub._tx=new PIXI.Text('...',{fontFamily:'Courier New,monospace',fontSize:isS?7:8,fill:0xE6EDF3,wordWrap:true,wordWrapWidth:isS?66:84});
-  bub.addChild(bub._bg);bub.addChild(bub._tx);
-  bub.y=isS?-36:-50;c.addChild(bub);c._bub=bub;
-  const w=isS?SW:RW,h=isS?SH:RH;
-  c.x=w/2;c.y=isS?h-15:h-25;c._by=c.y;
-  rc.addChild(c);
-  agentD[id]={c,dot,bub,_st:'idle',_col:col,_isS:isS};
-  updDot(id,'idle');
-}
-function updDot(id,st){
-  const d=agentD[id];if(!d)return;
-  const col=SHEX[st]||0x484F58,isS=d._isS;
-  d.dot.clear();d.dot.beginFill(col);
-  d.dot.drawCircle(isS?6:9,isS?-17:-25,4);d.dot.endFill();
+/* SIDEBAR */
+function renderSidebar(data){
+  const flow=data.flow||[],st={};
+  flow.forEach(a=>{st[a.id]=a;});
+  const el=document.getElementById('sb-agents');if(!el)return;
+  el.innerHTML=FM.map(a=>{
+    const s=(st[a.id]||{}).status||'idle';
+    const stxt=s==='working'?'工作中':s==='waiting'?'等待中':'休息中';
+    return `<div class="agent-card ${s}${selectedAgentId===a.id?' selected':''}" onclick="selectAgent('${a.id}')">
+      <div class="ac-icon">${a.icon}</div>
+      <div class="ac-info">
+        <div class="ac-name">${a.label}</div>
+        <div class="ac-status ${s}">${stxt}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-/* ─── ANIMATION TICKER ─── */
-function tick(){
-  const t=Date.now();
-  Object.entries(agentD).forEach(([id,d])=>{
-    if(d._st==='working'){d.c.y=d.c._by+Math.sin(t*.0028)*2.5;d.c.alpha=1;}
-    else if(d._st==='waiting'){d.c.alpha=.45+Math.abs(Math.sin(t*.0016))*.45;d.c.y=d.c._by;}
-    else{d.c.alpha=.45;d.c.y=d.c._by;}
-  });
-  fileAnims=fileAnims.filter(a=>{
-    a.t+=16.67;const p=Math.min(a.t/900,1);
-    const e=p<.5?2*p*p:-1+(4-2*p)*p;
-    const cpx=(a.sx+a.ex)/2,cpy=Math.min(a.sy,a.ey)-52;
-    a.g.x=(1-e)*(1-e)*a.sx+2*(1-e)*e*cpx+e*e*a.ex;
-    a.g.y=(1-e)*(1-e)*a.sy+2*(1-e)*e*cpy+e*e*a.ey;
-    a.g.alpha=p>.75?(1-p)/.25:1;a.g.rotation+=.06;
-    if(p>=1){pixiApp.stage.removeChild(a.g);return false;}return true;
-  });
-}
-function spawnFile(sx,sy,ex,ey){
-  if(!pixiApp)return;
-  const g=new PIXI.Graphics();
-  g.beginFill(0x58A6FF,.9);g.drawRect(-5,-6,10,12);g.endFill();
-  g.lineStyle(1,0xE6EDF3,.4);g.moveTo(2,-6);g.lineTo(5,-3);g.lineTo(5,-6);
-  g.x=sx;g.y=sy;pixiApp.stage.addChild(g);
-  fileAnims.push({g,sx,sy,ex,ey,t:0});
-}
-
-/* ─── BUBBLE MANAGEMENT ─── */
-function setBub(id,txt){
-  const d=agentD[id];if(!d)return;
-  const b=d.bub,isS=d._isS;
-  b._tx.text=txt;
-  const tw=Math.max(b._tx.width,16)+10,th=b._tx.height+8;
-  b._bg.clear();
-  b._bg.beginFill(0x1C2333,.97);b._bg.lineStyle(1,d._col||0x58A6FF,.8);
-  b._bg.drawRoundedRect(-tw/2,-th,tw,th,3);b._bg.endFill();
-  b._bg.beginFill(0x1C2333,.97);
-  b._bg.moveTo(-4,0);b._bg.lineTo(0,6);b._bg.lineTo(4,0);b._bg.endFill();
-  b._tx.x=-tw/2+5;b._tx.y=-th+4;b.visible=true;
-}
-function startBub(id){
-  if(bubTmr[id])return;
-  const ls=BLNS[id]||['工作中...'];let i=0;setBub(id,ls[0]);
-  bubTmr[id]=setInterval(()=>{
-    if(agentD[id]?._st!=='working'){stopBub(id);return;}
-    i=(i+1)%ls.length;setBub(id,ls[i]);
-  },2200);
-}
-function stopBub(id){
-  if(bubTmr[id]){clearInterval(bubTmr[id]);delete bubTmr[id];}
-  const d=agentD[id];if(d)d.bub.visible=false;
-}
-
-/* ─── UPDATE OFFICE (on each data refresh) ─── */
-function updOffice(flow,pipe){
-  if(!pixiApp)return;
-  const bi={};(flow||[]).forEach(a=>bi[a.id]=a);
-  const nw=(flow||[]).find(a=>a.status==='working');
-  const nwId=nw?nw.id:null;
-  if(nwId&&prevWId&&nwId!==prevWId){
-    const fo=rCtr(prevWId),to=rCtr(nwId);
-    const frc=roomC[prevWId],trc=roomC[nwId];
-    if(fo&&to&&frc&&trc) spawnFile(fo.x+frc.x,fo.y+frc.y,to.x+trc.x,to.y+trc.y);
-  }
-  prevWId=nwId;
-  (flow||[]).forEach(a=>{
-    const d=agentD[a.id];if(!d)return;
-    d._st=a.status;updDot(a.id,a.status);
-    if(a.status==='working')startBub(a.id);else stopBub(a.id);
-  });
-}
-function onRC(id){
-  selectedId=id;selRoom(id);
+/* SELECT AGENT */
+function selectAgent(id){
+  selectedAgentId=id;
   document.querySelectorAll('.rp-tab').forEach((t,i)=>{t.classList.toggle('active',i===0);});
-  document.querySelectorAll('.rp-pane').forEach((p,i)=>{p.classList.toggle('active',i===0);});
-  document.querySelectorAll('.sb-agent').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
-  if(lastData)showAD(id,lastData.flow||[]);
+  document.querySelectorAll('.rp-pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pane-agent').classList.add('active');
+  if(!lastData)return;
+  const aInfo=(lastData.flow||[]).find(a=>a.id===id);
+  if(!aInfo){document.getElementById('ad-inner').innerHTML='<div style="padding:20px;color:var(--t2)">無資料</div>';return;}
+  const s=aInfo.status||'idle';
+  const sc={working:'b-ok',waiting:'b-warn',idle:'b-brand'};
+  const stxt=s==='working'?'工作中':s==='waiting'?'等待中':'休息中';
+  const readItems=(aInfo.reads_stat||[]).map(r=>{
+    const ok=r.stat&&r.stat.ok;
+    const age=ok&&r.stat.age!=null?`<span class="file-age">${r.stat.age}分前</span>`:'';
+    return `<div class="file-item"><span class="file-dot ${ok?'ok':'miss'}"></span><span class="file-path">${esc(r.path)}</span>${age}</div>`;
+  }).join('');
+  const writeItems=(aInfo.writes_stat||[]).map(r=>{
+    const ok=r.stat&&r.stat.ok;
+    return `<div class="file-item"><span class="file-dot ${ok?'ok':'miss'}"></span><span class="file-path">${esc(r.path)}</span></div>`;
+  }).join('');
+  const skillPills=(aInfo.skills_avail||[]).map(s=>`<span class="pill ${s.ok?'sk':'sk-x'}">${esc(s.name)}</span>`).join('');
+  const hookPills=(aInfo.hooks_avail||[]).map(h=>`<span class="pill ${h.ok?'hk':'hk-x'}">${esc(h.name)}</span>`).join('');
+  document.getElementById('ad-inner').innerHTML=`
+    <div class="ad-head">
+      <div class="ad-icon">${aInfo.icon}</div>
+      <div><div class="ad-name">${esc(aInfo.label)}</div>
+        <div class="ad-badges">
+          <span class="badge ${sc[s]||'b-brand'}">${stxt}</span>
+          <span class="badge b-pur">${esc(aInfo.phase)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="ad-desc">${esc(aInfo.desc||'')}</div>
+    ${readItems?`<div class="ad-sec"><div class="ad-sl">讀取</div>${readItems}</div>`:''}
+    ${writeItems?`<div class="ad-sec"><div class="ad-sl">寫入</div>${writeItems}</div>`:''}
+    ${skillPills?`<div class="ad-sec"><div class="ad-sl">Skills</div><div class="pills">${skillPills}</div></div>`:''}
+    ${hookPills?`<div class="ad-sec"><div class="ad-sl">Hooks</div><div class="pills">${hookPills}</div></div>`:''}`;
+  if(lastData)renderSidebar(lastData);
 }
 
-/* ─── FETCH & RENDER ─── */
-async function fetchNow(){
-  clearInterval(timer);countdown=5;
-  try{const r=await fetch('/api/status');const d=await r.json();lastData=d;render(d);}
-  catch(e){setPill('se','OFFLINE');}
-  fetchRevenue();
-  startTimer();
+/* KPI */
+function renderKPI(data){
+  const prog=data.pipeline||{},usage=data.usage||{};
+  document.getElementById('k0').textContent=prog.count||0;
+  document.getElementById('k1').textContent=data.article_count||0;
+  document.getElementById('k2').textContent=usage.today||0;
+  document.getElementById('k3').textContent=usage.total||0;
+  const sc=(data.diag||{}).score||0;
+  const k4=document.getElementById('k4');
+  k4.className='kpi-v '+(sc>=80?'ok':sc>=50?'warn':'err');
+  k4.textContent=sc+'%';
+  document.getElementById('k7').textContent=((data.api||{}).model||'--').slice(0,15);
 }
+
+/* STATUS PILL */
+function renderStatus(data){
+  const pill=document.getElementById('spill'),stxt=document.getElementById('stxt');
+  const s=data.state||'idle';
+  pill.className='status-pill '+(s==='running'?'s-run':s==='error'?'s-err':'s-idle');
+  stxt.textContent=s==='running'?'RUNNING':s==='error'?'ERROR':'IDLE';
+  document.getElementById('ts').textContent=data.ts||'--';
+}
+
+/* REVENUE */
 async function fetchRevenue(){
   try{
     const r=await fetch('/api/revenue');const d=await r.json();
-    const rev=d.total_revenue||0,cost=d.monthly_cost||200;
-    const gap=rev-cost;
-    document.getElementById('k6').textContent='$'+rev;
-    document.getElementById('k6').className='kpi-v '+(rev>0?'ok':'warn');
-    document.getElementById('k7').textContent=(gap>=0?'+':'')+'$'+gap;
-    document.getElementById('k7').className='kpi-v '+(gap>=0?'ok':'warn');
+    const total=d.total_revenue||0,cost=d.monthly_cost||200,gap=total-cost;
+    document.getElementById('k5').textContent='$'+total;
+    const k6=document.getElementById('k6');
+    k6.textContent=(gap>=0?'+':'')+'$'+gap;
+    k6.className='kpi-v '+(gap>=0?'ok':'warn');
+    // Revenue panel
+    document.getElementById('rev-total-amt').textContent='$'+total;
+    const rg=document.getElementById('rev-gap-amt');
+    rg.textContent=(gap>=0?'+':'')+'$'+gap;
+    rg.style.color=gap>=0?'var(--ok)':'var(--warn)';
+    document.getElementById('rev-bar').style.width=Math.min(100,Math.round(total/cost*100))+'%';
+    const plats=d.platforms||{};
+    document.getElementById('rev-platforms').innerHTML=Object.entries(plats).map(([k,v])=>
+      `<div class="rev-row"><span class="rev-name">${esc(v.product||k)}</span><span class="rev-val">$${v.revenue||0}${v.sales!=null?' ('+v.sales+'筆)':''}</span></div>`
+    ).join('')||'<div style="color:var(--t2);font-size:9px;padding:8px 0">尚無收益資料</div>';
   }catch(e){}
 }
-function startTimer(){
-  clearInterval(timer);
-  timer=setInterval(()=>{countdown--;const e=document.getElementById('cdt');if(e)e.textContent=countdown+'s';if(countdown<=0)fetchNow();},1000);
-}
-function render(d){
-  document.getElementById('ts').textContent=d.ts;
-  document.getElementById('wstrip').style.display=d.has_placeholder?'flex':'none';
-  const sm={idle:'si',running:'sr',error:'se'},tx={idle:'IDLE',running:'RUNNING',error:'ERROR'};
-  setPill(sm[d.state]||'si',tx[d.state]||d.state);
-  document.getElementById('k0').textContent=d.pipeline?.count||0;
-  document.getElementById('k1').textContent=d.article_count||0;
-  document.getElementById('k2').textContent=d.usage?.today||0;
-  document.getElementById('k3').textContent=d.usage?.total||0;
-  const sc=d.diag?.score??100,se=document.getElementById('k4');
-  se.textContent=sc+'%';se.className='kpi-v '+(sc>=85?'ok':sc>=60?'warn':'err');
-  document.getElementById('k5').textContent=(d.api?.model||'--').slice(0,18);
-  if(!pixiApp)initPixi();
-  updOffice(d.flow||[],d.pipeline||{});
-  renderSB(d.flow||[],d.diag||{});
-  renderFeed(d.feed||[]);
-  renderArts(d.articles||[]);
-  if(selectedId)showAD(selectedId,d.flow||[]);
-}
-function setPill(cls,lbl){
-  const el=document.getElementById('spill');el.className='spill '+cls;
-  el.querySelector('.stxt').textContent=lbl;
+
+/* PROPOSALS */
+function renderProposals(){
+  fetch('/api/proposals').then(r=>r.json()).then(d=>{
+    const el=document.getElementById('sb-proposals');if(!el)return;
+    const lines=(d.content||'').split('\n').filter(l=>l.startsWith('## 提案-'));
+    const ph=el.querySelector('.sb-ph');
+    if(ph)ph.innerHTML='● 提案待審核'+(lines.length>0?' <b style="color:var(--pur)">('+lines.length+')</b>':'');
+    el.querySelectorAll('.sb-p-item,.sb-p-empty').forEach(i=>i.remove());
+    if(lines.length===0){
+      el.insertAdjacentHTML('beforeend','<div class="sb-p-empty">目前無提案</div>');
+    }else{
+      lines.slice(-3).reverse().forEach(l=>{
+        const t=l.replace('## 提案-','').trim();
+        el.insertAdjacentHTML('beforeend',`<div class="sb-p-item" title="${esc(t)}">${esc(t)}</div>`);
+      });
+    }
+  }).catch(()=>{});
 }
 
-/* ─── SIDEBAR ─── */
-function setSbFilter(f,btn){
-  sbFilter=f;document.querySelectorAll('.sb-f').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');if(lastData)renderSB(lastData.flow||[],lastData.diag||{});
+/* LOG */
+const LC={APPROVED:'ok',REJECTED:'warn',ERROR:'err',error:'err',Failed:'err',failed:'err',WARNING:'warn',INFO:'info'};
+function colorLine(l){for(const[k,c]of Object.entries(LC)){if(l.includes(k))return c;}return 'normal';}
+function renderLog(data,tab){
+  const el=document.getElementById('log-display');if(!el)return;
+  const lines=tab==='cron'?data.cron_log_tail||[]:data.error_log||[];
+  el.innerHTML=lines.slice(-80).map(l=>`<div class="log-line ${colorLine(l)}">${esc(l)}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
 }
-function renderSB(flow,diag){
-  const bi={};(flow||[]).forEach(a=>bi[a.id]=a);
-  const vis=FM.filter(m=>{
-    const a=bi[m.id];
-    if(sbFilter==='working')return a?.status==='working';
-    if(sbFilter==='idle')return a?.status!=='working';
-    return true;
-  });
-  document.getElementById('sb-list').innerHTML=vis.map(m=>{
-    const a=bi[m.id]||{},st=a.status||'idle',pc=PCSS[m.phase]||'#58A6FF';
-    const sel=m.id===selectedId?' selected':'';
-    return '<div class="sb-agent '+st+sel+'" data-id="'+esc(m.id)+'" onclick="onRC(\''+esc(m.id)+'\')">'
-      +'<div class="sb-avatar" style="border-color:'+pc+'40;color:'+pc+'">'+esc(m.icon)+'</div>'
-      +'<div class="sb-info"><div class="sb-name">'+esc(m.label.toUpperCase())+'</div>'
-      +'<span class="sb-badge '+st+'">'+esc((a.status_txt||st).toUpperCase())+'</span></div></div>';
-  }).join('');
-  const h=diag.health||[];
-  document.getElementById('sb-health').innerHTML=h.map(it=>'<div class="sb-hr"><span class="sb-hl">'+esc(it.name)+'</span><span class="sb-hv '+esc(it.status)+'">'+esc(it.val)+'</span></div>').join('')
-    +'<div class="sb-hr" style="margin-top:4px;"><span class="sb-hl">健康度</span>'
-    +'<span class="sb-hv '+(diag.score>=85?'ok':diag.score>=60?'warn':'err')+'">'+esc(String(diag.score??'--'))+'%</span></div>';
+function switchLog(tab,el){
+  currentLogTab=tab;
+  document.querySelectorAll('.log-tab').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  if(tab==='standup'){
+    fetch('/api/standup').then(r=>r.json()).then(d=>{
+      document.getElementById('log-display').innerHTML=(d.recent||[]).map(l=>`<div class="log-line ${colorLine(l)}">${esc(l)}</div>`).join('');
+    }).catch(()=>{});
+  }else if(lastData){renderLog(lastData,tab);}
 }
 
-/* ─── AGENT DETAIL ─── */
-function showAD(id,flow){
-  const a=(flow||[]).find(x=>x.id===id);if(!a)return;
-  const pc=PCSS[a.phase]||'#58A6FF';
-  const sm={working:'b-ok',waiting:'b-warn',idle:'b-info',done:'b-ok'};
-  const r=(a.reads_stat||[]).map(x=>fih(x.path,x.stat)).join('');
-  const w=(a.writes_stat||[]).map(x=>fih(x.path,x.stat)).join('');
-  const sk=(a.skills_avail||[]).map(s=>'<span class="pill '+(s.ok?'sk':'sk-x')+'">'+esc(s.name)+'</span>').join('');
-  const hk=(a.hooks_avail||[]).map(h=>'<span class="pill '+(h.ok?'hk':'hk-x')+'">'+esc(h.name)+'</span>').join('');
-  document.getElementById('ad-inner').innerHTML=
-    '<div class="ad-head"><div class="ad-icon" style="border-color:'+pc+'40;color:'+pc+'">'+esc(a.icon)+'</div>'
-    +'<div><div class="ad-name">'+esc(a.label)+'</div>'
-    +'<div class="ad-badges"><span class="badge b-brand" style="color:'+pc+';background:'+pc+'18">'+esc(a.phase)+'</span>'
-    +'<span class="badge '+(sm[a.status]||'b-info')+'">'+esc(a.status_txt||a.status)+'</span>'
-    +'<span class="badge" style="background:var(--bg3);color:var(--t2)">#'+esc(String(a.order||''))+'</span>'
-    +'</div></div></div>'
-    +'<div class="ad-desc">'+esc(a.desc||'')+'</div>'
-    +'<div class="ad-sec"><div class="ad-sl">INPUT</div>'+(r||'<div class="empty">—</div>')+'</div>'
-    +'<div class="ad-sec"><div class="ad-sl">OUTPUT</div>'+(w||'<div class="empty">—</div>')+'</div>'
-    +'<div class="ad-sec"><div class="ad-sl">SKILLS ('+esc(String((a.skills_avail||[]).length))+')</div><div class="pills">'+(sk||'<div class="empty">—</div>')+'</div></div>'
-    +'<div class="ad-sec"><div class="ad-sl">HOOKS ('+esc(String((a.hooks_avail||[]).length))+')</div><div class="pills">'+(hk||'<div class="empty">—</div>')+'</div></div>';
-}
-function fih(path,stat){
-  const ok=stat&&stat.ok,sh=path.split('/').pop().replace(/（.*?）/g,'');
-  const age=ok?(stat.age<1440?stat.age+'m前':Math.floor(stat.age/1440)+'d前'):'';
-  return '<div class="file-item"><div class="file-dot '+(ok?'ok':'miss')+'"></div>'
-    +'<span class="file-path" title="'+esc(path)+'">'+esc(sh)+'</span>'
-    +'<span class="file-age">'+esc(age)+'</span></div>';
-}
-
-/* ─── FEED ─── */
-function renderFeed(feed){
-  const el=document.getElementById('feed-list');
-  if(!feed||!feed.length){el.innerHTML='<div class="empty" style="padding:14px;">尚無活動</div>';return;}
-  el.innerHTML=feed.map(f=>{
-    const col=FEDC[f.agent]||'#8B949E';
-    return '<div class="fi"><div class="fi-dot '+esc(f.type)+'"></div>'
-      +'<div class="fi-b"><span class="fi-badge" style="background:'+col+'18;color:'+col+';border:1px solid '+col+'30">'+esc(f.agent)+'</span>'
-      +'<div class="fi-msg">'+esc(f.msg)+'</div>'+(f.time?'<div class="fi-t">'+esc(f.time)+'</div>':'')+'</div></div>';
-  }).join('');
-}
-
-/* ─── ARTICLES ─── */
-function renderArts(arts){
-  const el=document.getElementById('arts-list'),cnt=document.getElementById('arts-count');
-  if(!arts||!arts.length){el.innerHTML='<div class="empty" style="padding:12px;">尚無文章</div>';if(cnt)cnt.textContent='';return;}
-  if(cnt)cnt.textContent=arts.length+' 篇';
-  el.innerHTML=arts.slice(0,15).map(a=>
-    '<div class="art-item" onclick="openArticle(\''+esc(a.name)+'\',\''+esc(a.title)+'\')">'
-    +'<div class="art-dot"></div>'
-    +'<div class="art-title" title="'+esc(a.title)+'">'+esc(a.title)+'</div>'
-    +'<div class="art-w">'+esc(String(a.words))+'w</div></div>'
-  ).join('');
-}
-
-/* ─── TAB SWITCH ─── */
-function switchTab(name,btn){
+/* TABS */
+function switchTab(id,el){
   document.querySelectorAll('.rp-tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  const mp={detail:'pane-detail',feed:'pane-feed',chat:'pane-chat',arts:'pane-arts',standup:'pane-standup'};
+  if(el)el.classList.add('active');
   document.querySelectorAll('.rp-pane').forEach(p=>p.classList.remove('active'));
-  const t=document.getElementById(mp[name]);if(t)t.classList.add('active');
-}
-async function loadStandup(){
-  const el=document.getElementById('standup-body');
-  if(!el)return;
-  el.textContent='載入中...';
-  try{
-    const r=await fetch('/api/standup');const d=await r.json();
-    const lines=(d.recent||[]).filter(l=>l.trim());
-    el.textContent=lines.length?lines.join('\n'):'（尚無 standup 記錄）\n每天 08:00、16:00、00:00 自動生成';
-  }catch(e){el.textContent='載入失敗';}
+  const pane=document.getElementById('pane-'+id);if(pane)pane.classList.add('active');
 }
 
-/* ─── CHAT ─── */
-function addMsg(role,text){
-  const box=document.getElementById('chat-msgs');
-  const el=document.createElement('div');el.className='cm '+role;el.textContent=text;
-  box.appendChild(el);box.scrollTop=box.scrollHeight;
+/* ARTICLES */
+function renderArticles(data){
+  const arts=data.articles||[];
+  document.getElementById('arts-count').textContent=arts.length+' 篇';
+  document.getElementById('arts-list').innerHTML=arts.map(a=>
+    `<div class="art-item" onclick="openArticle('${esc(a.name)}')">
+      <span class="art-dot"></span>
+      <span class="art-title">${esc(a.title)}</span>
+      <span class="art-w">${a.words}字</span>
+    </div>`
+  ).join('')||'<div style="padding:20px;text-align:center;color:var(--t2);font-size:10px">尚無文章</div>';
 }
+
+/* MAIN FETCH */
+async function fetchNow(){
+  try{
+    const r=await fetch('/api/status');const d=await r.json();
+    lastData=d;
+    renderStatus(d);renderKPI(d);renderPipeline(d);renderSidebar(d);
+    if(currentLogTab!=='standup')renderLog(d,currentLogTab);
+    renderArticles(d);renderProposals();fetchRevenue();
+    checkAlerts(d);
+    if(selectedAgentId)selectAgent(selectedAgentId);
+    countdown=5;
+  }catch(e){console.error(e);}
+}
+
+/* ALERTS */
+function checkAlerts(data){
+  const errs=(data.error_log||[]).filter(l=>l.trim()&&l.includes('ERROR'));
+  if(errs.length>0&&!document.getElementById('alert-ov').classList.contains('show'))
+    showAlert('CRITICAL','系統錯誤',errs.slice(-1)[0],'err');
+}
+function showAlert(level,title,desc,type){
+  document.getElementById('alert-level').textContent=level;
+  document.getElementById('alert-title').textContent=title;
+  document.getElementById('alert-desc').textContent=desc;
+  document.getElementById('alert-box').className='alert-box'+(type==='warn'?' warn-type':'');
+  document.getElementById('alert-ov').classList.add('show');
+  document.body.classList.add('alerting');
+}
+function closeAlert(){
+  document.getElementById('alert-ov').classList.remove('show');
+  document.body.classList.remove('alerting');
+}
+
+/* COMMANDS */
+async function triggerRun(){
+  try{
+    await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showAlert('INFO','任務已啟動','run.sh 已在背景執行，30秒後更新狀態','warn');
+    setTimeout(closeAlert,2500);
+  }catch(e){alert('無法連接 API');}
+}
+async function triggerStop(){
+  try{
+    await fetch('/api/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showAlert('INFO','停止信號已發送','正在停止執行中的任務...','warn');
+    setTimeout(closeAlert,2000);
+  }catch(e){alert('無法連接 API');}
+}
+function triggerTopic(){
+  const t=document.getElementById('topic-input').value.trim();if(!t)return;
+  document.getElementById('chat-in').value='強制執行今日主題：'+t;
+  sendChat();switchTab('chat',null);
+}
+function saveSettings(){
+  const token=document.getElementById('set-token').value.trim();
+  const guide=document.getElementById('set-whop-guide').value.trim();
+  let msg='設定已記錄。請在 VPS 執行：\n\n';
+  if(token)msg+='ANTHROPIC_AUTH_TOKEN 更新\n';
+  if(guide)msg+='Whop Guide URL: '+guide+'\n';
+  alert(msg||'請先填入設定值');
+}
+
+/* MODAL */
+let devtoName='';
+async function openArticle(name){
+  devtoName=name;
+  document.getElementById('mtitle').textContent=name;
+  document.getElementById('mbody').textContent='載入中...';
+  document.getElementById('mfoot').textContent='';
+  document.getElementById('devto-btn').disabled=false;
+  document.getElementById('devto-btn').textContent='→ dev.to 草稿';
+  document.getElementById('modal').classList.add('open');
+  try{
+    const r=await fetch('/api/article/'+encodeURIComponent(name));
+    const d=await r.json();
+    document.getElementById('mbody').textContent=d.content||'（無內容）';
+    document.getElementById('mfoot').textContent=(d.content||'').split(/\s+/).length+' 詞';
+  }catch(e){document.getElementById('mbody').textContent='載入失敗';}
+}
+function closeModal(e){
+  if(!e||e.target===document.getElementById('modal'))
+    document.getElementById('modal').classList.remove('open');
+}
+async function postToDevto(){
+  const btn=document.getElementById('devto-btn');
+  btn.disabled=true;btn.textContent='發布中...';
+  try{
+    const r=await fetch('/api/devto',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:devtoName})});
+    const d=await r.json();
+    if(d.ok){btn.textContent='✓ 已建立草稿';document.getElementById('mfoot').textContent='URL: '+(d.url||'草稿');}
+    else{btn.textContent='✗ 失敗';btn.disabled=false;document.getElementById('mfoot').textContent=d.error||'';}
+  }catch(e){btn.textContent='錯誤';btn.disabled=false;}
+}
+
+/* CHAT */
+function chatKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 async function sendChat(){
-  const inp=document.getElementById('chat-in');const msg=inp.value.trim();if(!msg)return;
-  inp.value='';addMsg('user',msg);
+  const inp=document.getElementById('chat-in');
+  const msg=inp.value.trim();if(!msg)return;
+  inp.value='';
+  const msgs=document.getElementById('chat-msgs');
+  msgs.insertAdjacentHTML('beforeend',`<div class="cm user">${esc(msg)}</div>`);
+  msgs.scrollTop=msgs.scrollHeight;
   document.getElementById('chat-btn').disabled=true;
   document.getElementById('chat-typing').style.display='block';
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
-    const d=await r.json();addMsg('ai',d.reply||'（無回應）');
-  }catch(e){addMsg('sys','連線失敗：'+e);}
+    const d=await r.json();
+    msgs.insertAdjacentHTML('beforeend',`<div class="cm ai">${esc(d.reply||'')}</div>`);
+  }catch(e){msgs.insertAdjacentHTML('beforeend','<div class="cm ai">❌ 連接失敗</div>');}
   document.getElementById('chat-btn').disabled=false;
   document.getElementById('chat-typing').style.display='none';
-  // switch to chat pane
-  document.querySelectorAll('.rp-tab')[2].click();
+  msgs.scrollTop=msgs.scrollHeight;
 }
-function chatKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 
-/* ─── ARTICLE MODAL ─── */
-async function openArticle(name,title){
-  currentArticleName=name;
-  document.getElementById('mtitle').textContent=title||name;
-  document.getElementById('mbody').textContent='載入中...';
-  document.getElementById('mfoot').textContent='';
-  const b=document.getElementById('devto-btn');b.disabled=false;b.textContent='→ dev.to 草稿';
-  document.getElementById('modal').classList.add('open');
-  try{
-    const r=await fetch('/api/article?name='+encodeURIComponent(name));
-    if(r.ok){const t=await r.text();document.getElementById('mbody').textContent=t;document.getElementById('mfoot').textContent=name+'.md · '+t.split(/\s+/).length+' 詞';}
-    else document.getElementById('mbody').textContent='找不到文章。';
-  }catch(e){document.getElementById('mbody').textContent='載入失敗：'+e;}
+/* TIMER */
+function startTimer(){
+  timer=setInterval(()=>{countdown--;if(countdown<=0){fetchNow();countdown=5;}},1000);
 }
-async function postToDevto(){
-  if(!currentArticleName)return;
-  const btn=document.getElementById('devto-btn');btn.disabled=true;btn.textContent='發布中...';
-  try{
-    const r=await fetch('/api/post-devto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:currentArticleName})});
-    const d=await r.json();
-    if(d.ok){btn.textContent='✓ 草稿建立';document.getElementById('mfoot').textContent+=' · '+(d.url||'草稿');}
-    else{btn.textContent='✗ '+d.error.slice(0,35);btn.disabled=false;}
-  }catch(e){btn.textContent='連線失敗';btn.disabled=false;}
-}
-function closeModal(e){if(!e||e.target.id==='modal')document.getElementById('modal').classList.remove('open');}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal({target:{id:'modal'}});});
-
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-fetchNow();
+fetchNow();startTimer();
+setInterval(()=>{if(currentLogTab!=='standup'&&lastData)renderLog(lastData,currentLogTab);},2000);
 </script>
 </body>
 </html>"""
@@ -1272,28 +1259,31 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/api/status":
             self._json(json.dumps(get_status_data(),ensure_ascii=False).encode())
         elif self.path=="/api/revenue":
-            d = rj(".team-memory/revenue-tracking.json", {})
-            self._json(json.dumps(d, ensure_ascii=False).encode())
+            self._json(json.dumps(revenue_data(),ensure_ascii=False).encode())
         elif self.path=="/api/proposals":
-            f = BASE/".team-memory/proposals.md"
-            content = f.read_text(encoding="utf-8") if f.exists() else ""
-            self._json(json.dumps({"content": content}, ensure_ascii=False).encode())
+            self._json(json.dumps(proposals_data(),ensure_ascii=False).encode())
         elif self.path=="/api/standup":
-            f = BASE/".team-memory/standup-log.md"
-            lines = f.read_text(encoding="utf-8").strip().split("\n") if f.exists() else []
-            self._json(json.dumps({"recent": lines[-30:]}, ensure_ascii=False).encode())
+            self._json(json.dumps(standup_data(),ensure_ascii=False).encode())
+        elif self.path.startswith("/api/article/"):
+            # Path-based: /api/article/article-name
+            raw=self.path[len("/api/article/"):]
+            name=urllib.parse.unquote(raw)
+            if name and re.match(r'^[\w\-\.]{1,100}$',name):
+                c=get_article_content(name)
+                if c:
+                    self._json(json.dumps({"content":c},ensure_ascii=False).encode())
+                    return
+            self.send_response(404); self.end_headers()
         elif self.path.startswith("/api/article"):
+            # Legacy query-param: /api/article?name=X
             parsed=urllib.parse.urlparse(self.path)
             params=urllib.parse.parse_qs(parsed.query)
             name=params.get("name",[""])[0]
             if name and re.match(r'^[\w\-\.]{1,100}$',name):
                 c=get_article_content(name)
                 if c:
-                    self.send_response(200)
-                    self.send_header("Content-Type","text/plain; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin","*")
-                    self.end_headers()
-                    self.wfile.write(c.encode("utf-8")); return
+                    self._json(json.dumps({"content":c},ensure_ascii=False).encode())
+                    return
             self.send_response(404); self.end_headers()
         else:
             self.send_response(200)
@@ -1303,15 +1293,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length=int(self.headers.get("Content-Length",0))
-        body=json.loads(self.rfile.read(length))
+        body={}
+        if length>0:
+            try: body=json.loads(self.rfile.read(length))
+            except: pass
         if self.path=="/api/chat":
             msg=body.get("message","").strip()
             reply=do_chat(msg) if msg else "請輸入訊息。"
             self._json(json.dumps({"reply":reply},ensure_ascii=False).encode())
-        elif self.path=="/api/post-devto":
+        elif self.path in ("/api/devto","/api/post-devto"):
             name=body.get("name","")
             result=post_to_devto(name) if name else {"ok":False,"error":"缺少 name"}
             self._json(json.dumps(result,ensure_ascii=False).encode())
+        elif self.path=="/api/run":
+            subprocess.Popen(["bash",str(BASE/"run.sh")])
+            self._json(json.dumps({"ok":True,"msg":"run.sh 已啟動"},ensure_ascii=False).encode())
+        elif self.path=="/api/stop":
+            subprocess.run(["pkill","-f","run.sh"],capture_output=True)
+            self._json(json.dumps({"ok":True,"msg":"已發送停止信號"},ensure_ascii=False).encode())
         else:
             self.send_response(404); self.end_headers()
 
@@ -1326,5 +1325,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     port=int(os.environ.get("DASHBOARD_PORT",3000))
-    print(f"Dashboard v9 啟動：http://0.0.0.0:{port}")
+    print(f"Dashboard v9 指揮中心啟動：http://0.0.0.0:{port}")
     HTTPServer(("0.0.0.0",port),Handler).serve_forever()
