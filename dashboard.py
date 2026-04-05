@@ -560,7 +560,7 @@ body{display:flex;flex-direction:column;}
 .sv.err{color:var(--err);}
 
 /* CENTER STAGE */
-.center-stage{background:var(--bg0);overflow:hidden;display:flex;flex-direction:column;}
+.center-stage{background:linear-gradient(180deg,#f6f3ef 0%,#f1eee9 100%);overflow:hidden;display:flex;flex-direction:column;position:relative;}
 .mode-panel{display:none;flex:1;flex-direction:column;overflow:hidden;animation:fadeIn .18s ease;}
 body[data-mode="overview"]   .mode-overview{display:flex;}
 body[data-mode="diagnostic"] .mode-diagnostic{display:flex;}
@@ -568,67 +568,95 @@ body[data-mode="content"]    .mode-content{display:flex;}
 body[data-mode="activity"]   .mode-activity{display:flex;}
 body[data-mode="control"]    .mode-control{display:flex;}
 
-/* OFFICE GRID */
-.office-grid{
-  flex:1;display:grid;min-height:0;overflow:hidden;
-  grid-template-columns:1fr 1fr 1fr 1fr;
-  grid-template-rows:1fr 1fr 1fr 1fr;
-  grid-template-areas:
-    "res  top  wri  seo"
-    "eng  TBL  TBL  chi"
-    "rev  TBL  TBL  pos"
-    "fdb  sty  kno  emp";
-  gap:8px;padding:12px 14px;
+/* OFFICE STAGE */
+.overview-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:14px;gap:10px;}
+.scene-caption{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:2px 2px 0;}
+.scene-title{font-size:17px;font-weight:700;color:var(--t0);letter-spacing:.01em;}
+.scene-sub{font-size:11px;color:var(--t1);}
+.scene-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.scene-pill{padding:4px 8px;border:1px solid var(--b0);border-radius:999px;font-size:10px;color:var(--t1);background:rgba(255,255,255,.45);}
+.scene-pill strong{color:var(--t0);font-weight:700;}
+.office-room{flex:1;min-height:0;position:relative;border:1px solid var(--b0);border-radius:18px;overflow:hidden;
+  background:
+    linear-gradient(transparent 95%, rgba(184,179,171,.15) 100%),
+    linear-gradient(90deg, transparent 95%, rgba(184,179,171,.15) 100%),
+    radial-gradient(circle at 50% 35%, rgba(255,255,255,.75), transparent 45%),
+    linear-gradient(180deg,#efece7 0%,#ebe7e2 100%);
+  background-size:34px 34px,34px 34px,100% 100%,100% 100%;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55), inset 0 -16px 30px rgba(44,40,37,.03);
 }
-.ws{background:var(--bg1);border:1px solid var(--b0);border-radius:6px;
-  cursor:pointer;display:flex;flex-direction:column;padding:8px 9px;
-  transition:border-color .14s,background .14s;overflow:hidden;position:relative;}
-.ws:hover{border-color:var(--b1);background:var(--bg2);}
-.ws.selected{border-color:var(--brand);background:var(--brand-bg);}
-.ws.dimmed{opacity:0.4;}
-.ws.working{border-color:var(--ok);background:var(--ok-bg);
-  animation:breathe 3s ease-in-out infinite;transform-origin:center;}
-.ws.waiting{border-color:var(--wait);background:var(--wait-bg);}
-.ws-surface{background:var(--bg2);border-radius:4px;padding:5px 7px;
-  display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-shrink:0;}
-.ws.working .ws-surface{background:rgba(90,138,106,.12);}
-.ws.waiting .ws-surface{background:rgba(122,143,168,.12);}
-.ws.selected .ws-surface{background:rgba(74,122,138,.12);}
-.ws-icon{font-size:15px;line-height:1;}
-.ws-light{width:7px;height:7px;border-radius:50%;background:var(--b0);margin-left:auto;flex-shrink:0;}
-.ws.working .ws-light{background:var(--ok);animation:pulse 1.5s infinite;}
-.ws.waiting .ws-light{background:var(--wait);}
-.ws.selected .ws-light{background:var(--brand);}
-.ws-name{font-size:11px;font-weight:600;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.office-room:before{content:"";position:absolute;inset:14px;border:1px solid rgba(184,179,171,.35);border-radius:14px;pointer-events:none;}
+.office-room:after{content:"";position:absolute;left:50%;top:50%;width:52%;height:46%;transform:translate(-50%,-50%);border-radius:34px;
+  border:1px dashed rgba(122,143,168,.24);pointer-events:none;}
+.room-tag{position:absolute;padding:4px 8px;border-radius:999px;background:rgba(245,243,240,.85);border:1px solid rgba(184,179,171,.65);
+  font-size:10px;color:var(--t1);backdrop-filter:blur(4px);}
+.room-tag strong{color:var(--t0);font-weight:700;}
+.room-tag.rt-nw{top:18px;left:18px;}
+.room-tag.rt-ne{top:18px;right:18px;}
+.room-tag.rt-sw{bottom:18px;left:18px;}
+.room-tag.rt-se{bottom:18px;right:18px;}
+.office-grid{position:absolute;inset:26px;display:grid;grid-template-columns:1fr 1fr 1.18fr 1fr;grid-template-rows:1fr 1fr 1fr 1fr;
+  grid-template-areas:
+    "res top TBL seo"
+    "eng TBL TBL chi"
+    "rev TBL TBL pos"
+    "fdb sty kno pos";
+  gap:14px;align-items:stretch;}
+.ws{position:relative;min-height:122px;padding:10px;border-radius:16px;border:1px solid rgba(184,179,171,.85);
+  background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(237,234,229,.92));
+  box-shadow:0 6px 20px rgba(44,40,37,.04), inset 0 1px 0 rgba(255,255,255,.85);
+  display:flex;flex-direction:column;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .16s ease;}
+.ws:hover{transform:translateY(-1px);border-color:var(--b1);box-shadow:0 10px 24px rgba(44,40,37,.07);}
+.ws.selected{border-color:var(--brand);box-shadow:0 12px 28px rgba(74,122,138,.16), inset 0 1px 0 rgba(255,255,255,.9);}
+.ws.dimmed{opacity:.48;}
+.ws.working{border-color:rgba(90,138,106,.5);background:linear-gradient(180deg,rgba(232,240,234,.98),rgba(245,243,240,.94));}
+.ws.waiting{border-color:rgba(122,143,168,.5);background:linear-gradient(180deg,rgba(232,236,240,.98),rgba(245,243,240,.94));}
+.ws-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.ws-icon{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--bg2);color:var(--t0);box-shadow:inset 0 1px 0 rgba(255,255,255,.6);}
+.ws.working .ws-icon{background:rgba(90,138,106,.14);color:var(--ok);}
+.ws.waiting .ws-icon{background:rgba(122,143,168,.14);color:var(--wait);}
+.ws-copy{display:flex;flex-direction:column;min-width:0;}
+.ws-name{font-size:12px;font-weight:700;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .ws-phase{font-size:10px;color:var(--t2);}
-.ws-stxt{font-size:10px;margin-top:auto;padding-top:3px;}
-.ws-stxt.working{color:var(--ok);}
-.ws-stxt.waiting{color:var(--wait);}
-.ws-stxt.idle{color:var(--t2);}
-.ws-researcher{grid-area:res;}.ws-topic-selector{grid-area:top;}
-.ws-writer{grid-area:wri;}.ws-seo-agent{grid-area:seo;}
-.ws-english-writer{grid-area:eng;}.ws-chinese-writer{grid-area:chi;}
-.ws-reviewer{grid-area:rev;}.ws-poster{grid-area:pos;}
-.ws-feedback-collector{grid-area:fdb;}.ws-style-updater{grid-area:sty;}
-.ws-knowledge-subagent{grid-area:kno;}
-.ws-empty{grid-area:emp;background:transparent;border:1px dashed var(--b0);
-  border-radius:6px;opacity:.3;cursor:default;}
-.center-table{grid-area:TBL;background:var(--bg2);border:1.5px solid var(--b1);
-  border-radius:8px;display:flex;align-items:center;justify-content:center;
-  box-shadow:inset 0 1px 4px rgba(44,40,37,.07);}
-.table-surface{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px;}
-.table-label{font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.08em;text-transform:uppercase;}
-.table-status{font-size:15px;font-weight:700;color:var(--t0);}
-.table-divider{width:28px;height:1px;background:var(--b0);}
-.table-topic{font-size:11px;color:var(--t1);max-width:130px;text-align:center;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.team-bar{padding:5px 14px 8px;border-top:1px solid var(--b0);flex-shrink:0;
-  display:flex;align-items:center;gap:16px;}
-.tbs{font-size:11px;color:var(--t1);}
-.tbs span{font-weight:600;color:var(--t0);}
-.tbs.ok span{color:var(--ok);}
-.tbs.wait span{color:var(--wait);}
-
+.ws-led{width:9px;height:9px;border-radius:50%;margin-left:auto;background:var(--b0);box-shadow:0 0 0 3px rgba(204,200,192,.22);flex-shrink:0;}
+.ws.working .ws-led{background:var(--ok);box-shadow:0 0 0 4px rgba(90,138,106,.16);animation:pulse 1.4s infinite;}
+.ws.waiting .ws-led{background:var(--wait);box-shadow:0 0 0 4px rgba(122,143,168,.12);}
+.ws.selected .ws-led{background:var(--brand);box-shadow:0 0 0 4px rgba(74,122,138,.16);}
+.ws-desk{position:relative;flex:1;min-height:54px;border-radius:12px;background:linear-gradient(180deg,#dfd9d1,#e9e4de);border:1px solid rgba(184,179,171,.65);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55);padding:10px 10px 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;}
+.ws.working .ws-desk{background:linear-gradient(180deg,rgba(90,138,106,.12),rgba(233,228,222,.95));}
+.ws.waiting .ws-desk{background:linear-gradient(180deg,rgba(122,143,168,.12),rgba(233,228,222,.95));}
+.ws-monitor{width:26px;height:17px;border-radius:5px;background:#f8f7f4;border:1px solid rgba(184,179,171,.8);position:relative;box-shadow:0 1px 0 rgba(255,255,255,.7);}
+.ws-monitor:after{content:"";position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);width:10px;height:3px;border-radius:999px;background:rgba(184,179,171,.8);}
+.ws-paper{flex:1;height:22px;border-radius:7px;background:rgba(255,255,255,.55);border:1px dashed rgba(184,179,171,.7);}
+.ws-chair{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);width:28px;height:12px;border-radius:0 0 999px 999px;background:rgba(122,143,168,.18);border:1px solid rgba(184,179,171,.5);}
+.ws-meta{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;}
+.ws-stxt{font-size:10px;color:var(--t2);}
+.ws-stxt.working{color:var(--ok);font-weight:700;}
+.ws-stxt.waiting{color:var(--wait);font-weight:700;}
+.ws-brief{font-size:9px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:right;}
+.ws-researcher{grid-area:res;}.ws-topic-selector{grid-area:top;}.ws-writer{grid-area:wri;}.ws-seo-agent{grid-area:seo;}
+.ws-english-writer{grid-area:eng;}.ws-chinese-writer{grid-area:chi;}.ws-reviewer{grid-area:rev;}.ws-poster{grid-area:pos;}
+.ws-feedback-collector{grid-area:fdb;}.ws-style-updater{grid-area:sty;}.ws-knowledge-subagent{grid-area:kno;}
+.center-table{grid-area:TBL;position:relative;display:flex;align-items:center;justify-content:center;padding:18px;min-height:250px;}
+.table-surface{position:relative;width:100%;height:100%;min-height:230px;border-radius:32px;background:
+  radial-gradient(circle at 50% 30%, rgba(255,255,255,.85), transparent 35%),
+  linear-gradient(180deg,#ddd7ce,#d4cec5);
+  border:1px solid rgba(184,179,171,.85);box-shadow:0 18px 36px rgba(44,40,37,.08), inset 0 1px 0 rgba(255,255,255,.8);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:18px 24px;text-align:center;overflow:hidden;}
+.table-surface:before{content:"";position:absolute;inset:16px;border-radius:24px;border:1px dashed rgba(74,122,138,.24);}
+.table-surface:after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62%;height:42%;border-radius:999px;background:rgba(255,255,255,.3);}
+.table-chair{position:absolute;width:34px;height:14px;border-radius:999px;background:rgba(122,143,168,.18);border:1px solid rgba(184,179,171,.5);}
+.table-chair.t1{top:16px;left:50%;transform:translateX(-50%);} .table-chair.t2{right:18px;top:50%;transform:translateY(-50%) rotate(90deg);} .table-chair.t3{bottom:16px;left:50%;transform:translateX(-50%);} .table-chair.t4{left:18px;top:50%;transform:translateY(-50%) rotate(90deg);} 
+.table-label{position:relative;z-index:1;font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.12em;text-transform:uppercase;}
+.table-status{position:relative;z-index:1;font-size:22px;font-weight:800;color:var(--t0);letter-spacing:.02em;}
+.table-divider{position:relative;z-index:1;width:42px;height:1px;background:var(--b0);}
+.table-topic{position:relative;z-index:1;font-size:12px;color:var(--t1);max-width:220px;line-height:1.55;}
+.table-note{position:relative;z-index:1;font-size:10px;color:var(--t2);}
+.team-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex-shrink:0;}
+.tbs{padding:10px 12px;border:1px solid var(--b0);border-radius:12px;background:rgba(255,255,255,.48);font-size:11px;color:var(--t1);display:flex;flex-direction:column;gap:4px;}
+.tbs span{font-size:18px;line-height:1;font-weight:800;color:var(--t0);}
+.tbs.ok span{color:var(--ok);} .tbs.wait span{color:var(--wait);} .tbs.err span{color:var(--brand);}
 /* PIPELINE STRIP */
 .pipe-strip{padding:8px 14px 10px;border-top:1px solid var(--b0);flex-shrink:0;}
 .pipe-strip-hd{font-size:8.5px;font-weight:700;color:var(--t2);letter-spacing:.1em;
@@ -882,76 +910,97 @@ body[data-mode="control"]    .mode-control{display:flex;}
 
     <!-- OVERVIEW -->
     <div class="mode-panel mode-overview">
-      <div class="office-grid">
-        <div class="ws ws-researcher" id="ws-researcher" onclick="selectAgent('researcher')">
-          <div class="ws-surface"><span class="ws-icon">◎</span><span class="ws-light"></span></div>
-          <span class="ws-name">研究員</span><span class="ws-phase">探索</span>
-          <span class="ws-stxt idle" id="wst-researcher">休息中</span>
-        </div>
-        <div class="ws ws-topic-selector" id="ws-topic-selector" onclick="selectAgent('topic-selector')">
-          <div class="ws-surface"><span class="ws-icon">◈</span><span class="ws-light"></span></div>
-          <span class="ws-name">選題</span><span class="ws-phase">策略</span>
-          <span class="ws-stxt idle" id="wst-topic-selector">休息中</span>
-        </div>
-        <div class="ws ws-writer" id="ws-writer" onclick="selectAgent('writer')">
-          <div class="ws-surface"><span class="ws-icon">✦</span><span class="ws-light"></span></div>
-          <span class="ws-name">中文初稿</span><span class="ws-phase">生產</span>
-          <span class="ws-stxt idle" id="wst-writer">休息中</span>
-        </div>
-        <div class="ws ws-seo-agent" id="ws-seo-agent" onclick="selectAgent('seo-agent')">
-          <div class="ws-surface"><span class="ws-icon">S</span><span class="ws-light"></span></div>
-          <span class="ws-name">SEO</span><span class="ws-phase">生產</span>
-          <span class="ws-stxt idle" id="wst-seo-agent">休息中</span>
-        </div>
-        <div class="ws ws-english-writer" id="ws-english-writer" onclick="selectAgent('english-writer')">
-          <div class="ws-surface"><span class="ws-icon">E</span><span class="ws-light"></span></div>
-          <span class="ws-name">英文寫手</span><span class="ws-phase">生產</span>
-          <span class="ws-stxt idle" id="wst-english-writer">休息中</span>
-        </div>
-        <div class="center-table">
-          <div class="table-surface">
-            <div class="table-label">AI Factory</div>
-            <div class="table-status" id="table-status">待命中</div>
-            <div class="table-divider"></div>
-            <div class="table-topic" id="table-topic">等待任務</div>
+      <div class="overview-wrap">
+        <div class="scene-caption">
+          <div>
+            <div class="scene-title">AI 團隊工作空間</div>
+            <div class="scene-sub">俯視辦公室控制室｜每個席位都代表一個正在協作的 Agent 工作站</div>
+          </div>
+          <div class="scene-meta">
+            <div class="scene-pill">主題 <strong id="overview-topic-chip">等待任務</strong></div>
+            <div class="scene-pill">模式 <strong id="overview-state-chip">待命中</strong></div>
+            <div class="scene-pill">選中 <strong id="overview-selected">無</strong></div>
           </div>
         </div>
-        <div class="ws ws-chinese-writer" id="ws-chinese-writer" onclick="selectAgent('chinese-writer')">
-          <div class="ws-surface"><span class="ws-icon">中</span><span class="ws-light"></span></div>
-          <span class="ws-name">中文詮釋</span><span class="ws-phase">生產</span>
-          <span class="ws-stxt idle" id="wst-chinese-writer">休息中</span>
+        <div class="office-room">
+          <div class="room-tag rt-nw"><strong>探索區</strong> 需求與選題</div>
+          <div class="room-tag rt-ne"><strong>生產區</strong> 內容與 SEO</div>
+          <div class="room-tag rt-sw"><strong>回饋區</strong> 審稿與觀測</div>
+          <div class="room-tag rt-se"><strong>知識區</strong> 發布與演化</div>
+          <div class="office-grid">
+            <div class="ws ws-researcher" id="ws-researcher" onclick="selectAgent('researcher')">
+              <div class="ws-hd"><span class="ws-icon">◎</span><div class="ws-copy"><span class="ws-name">研究員</span><span class="ws-phase">探索</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-researcher">休息中</span><span class="ws-brief">需求掃描</span></div>
+            </div>
+            <div class="ws ws-topic-selector" id="ws-topic-selector" onclick="selectAgent('topic-selector')">
+              <div class="ws-hd"><span class="ws-icon">◈</span><div class="ws-copy"><span class="ws-name">選題</span><span class="ws-phase">策略</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-topic-selector">休息中</span><span class="ws-brief">主題決策</span></div>
+            </div>
+            <div class="ws ws-writer" id="ws-writer" onclick="selectAgent('writer')">
+              <div class="ws-hd"><span class="ws-icon">✦</span><div class="ws-copy"><span class="ws-name">中文初稿</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-writer">休息中</span><span class="ws-brief">內容寫作</span></div>
+            </div>
+            <div class="ws ws-seo-agent" id="ws-seo-agent" onclick="selectAgent('seo-agent')">
+              <div class="ws-hd"><span class="ws-icon">S</span><div class="ws-copy"><span class="ws-name">SEO</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-seo-agent">休息中</span><span class="ws-brief">關鍵字優化</span></div>
+            </div>
+            <div class="ws ws-english-writer" id="ws-english-writer" onclick="selectAgent('english-writer')">
+              <div class="ws-hd"><span class="ws-icon">E</span><div class="ws-copy"><span class="ws-name">英文寫手</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-english-writer">休息中</span><span class="ws-brief">雙語輸出</span></div>
+            </div>
+            <div class="center-table">
+              <div class="table-surface">
+                <span class="table-chair t1"></span><span class="table-chair t2"></span><span class="table-chair t3"></span><span class="table-chair t4"></span>
+                <div class="table-label">AI Factory Core</div>
+                <div class="table-status" id="table-status">待命中</div>
+                <div class="table-divider"></div>
+                <div class="table-topic" id="table-topic">等待任務</div>
+                <div class="table-note">中央協作桌會同步顯示本輪主題與整體狀態</div>
+              </div>
+            </div>
+            <div class="ws ws-chinese-writer" id="ws-chinese-writer" onclick="selectAgent('chinese-writer')">
+              <div class="ws-hd"><span class="ws-icon">中</span><div class="ws-copy"><span class="ws-name">中文詮釋</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-chinese-writer">休息中</span><span class="ws-brief">台灣語境</span></div>
+            </div>
+            <div class="ws ws-reviewer" id="ws-reviewer" onclick="selectAgent('reviewer')">
+              <div class="ws-hd"><span class="ws-icon">◉</span><div class="ws-copy"><span class="ws-name">審稿</span><span class="ws-phase">品管</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-reviewer">休息中</span><span class="ws-brief">品質檢查</span></div>
+            </div>
+            <div class="ws ws-poster" id="ws-poster" onclick="selectAgent('poster')">
+              <div class="ws-hd"><span class="ws-icon">◆</span><div class="ws-copy"><span class="ws-name">發文</span><span class="ws-phase">發布</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-poster">休息中</span><span class="ws-brief">上架平台</span></div>
+            </div>
+            <div class="ws ws-feedback-collector" id="ws-feedback-collector" onclick="selectAgent('feedback-collector')">
+              <div class="ws-hd"><span class="ws-icon">F</span><div class="ws-copy"><span class="ws-name">回報收集</span><span class="ws-phase">回饋</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-feedback-collector">休息中</span><span class="ws-brief">表現追蹤</span></div>
+            </div>
+            <div class="ws ws-style-updater" id="ws-style-updater" onclick="selectAgent('style-updater')">
+              <div class="ws-hd"><span class="ws-icon">↺</span><div class="ws-copy"><span class="ws-name">風格進化</span><span class="ws-phase">進化</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-style-updater">休息中</span><span class="ws-brief">策略調整</span></div>
+            </div>
+            <div class="ws ws-knowledge-subagent" id="ws-knowledge-subagent" onclick="selectAgent('knowledge-subagent')">
+              <div class="ws-hd"><span class="ws-icon">K</span><div class="ws-copy"><span class="ws-name">知識庫</span><span class="ws-phase">進化</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-knowledge-subagent">休息中</span><span class="ws-brief">資料沉澱</span></div>
+            </div>
+          </div>
         </div>
-        <div class="ws ws-reviewer" id="ws-reviewer" onclick="selectAgent('reviewer')">
-          <div class="ws-surface"><span class="ws-icon">◉</span><span class="ws-light"></span></div>
-          <span class="ws-name">審稿</span><span class="ws-phase">品管</span>
-          <span class="ws-stxt idle" id="wst-reviewer">休息中</span>
+        <div class="team-bar">
+          <div class="tbs ok" id="tb-working">工作中 <span>0</span></div>
+          <div class="tbs wait" id="tb-waiting">等待中 <span>0</span></div>
+          <div class="tbs" id="tb-idle">休息中 <span>11</span></div>
+          <div class="tbs err">已選取 <span id="tb-selected">無</span></div>
         </div>
-        <div class="ws ws-poster" id="ws-poster" onclick="selectAgent('poster')">
-          <div class="ws-surface"><span class="ws-icon">◆</span><span class="ws-light"></span></div>
-          <span class="ws-name">發文</span><span class="ws-phase">發布</span>
-          <span class="ws-stxt idle" id="wst-poster">休息中</span>
-        </div>
-        <div class="ws ws-feedback-collector" id="ws-feedback-collector" onclick="selectAgent('feedback-collector')">
-          <div class="ws-surface"><span class="ws-icon">F</span><span class="ws-light"></span></div>
-          <span class="ws-name">回報收集</span><span class="ws-phase">回饋</span>
-          <span class="ws-stxt idle" id="wst-feedback-collector">休息中</span>
-        </div>
-        <div class="ws ws-style-updater" id="ws-style-updater" onclick="selectAgent('style-updater')">
-          <div class="ws-surface"><span class="ws-icon">↺</span><span class="ws-light"></span></div>
-          <span class="ws-name">風格進化</span><span class="ws-phase">進化</span>
-          <span class="ws-stxt idle" id="wst-style-updater">休息中</span>
-        </div>
-        <div class="ws ws-knowledge-subagent" id="ws-knowledge-subagent" onclick="selectAgent('knowledge-subagent')">
-          <div class="ws-surface"><span class="ws-icon">K</span><span class="ws-light"></span></div>
-          <span class="ws-name">知識庫</span><span class="ws-phase">進化</span>
-          <span class="ws-stxt idle" id="wst-knowledge-subagent">休息中</span>
-        </div>
-        <div class="ws-empty"></div>
-      </div>
-      <div class="team-bar">
-        <div class="tbs ok" id="tb-working">工作中 <span>0</span></div>
-        <div class="tbs wait" id="tb-waiting">等待中 <span>0</span></div>
-        <div class="tbs" id="tb-idle">休息中 <span>11</span></div>
       </div>
     </div>
 
@@ -1108,10 +1157,17 @@ function updateWorkstations(data){
   });
   const state=data.state||'idle';
   const ts=document.getElementById('table-status');
-  if(ts)ts.textContent=state==='running'?'執行中':state==='error'?'異常':'待命中';
+  const stateText=state==='running'?'執行中':state==='error'?'異常':'待命中';
+  if(ts)ts.textContent=stateText;
+  const stateChip=document.getElementById('overview-state-chip'); if(stateChip) stateChip.textContent=stateText;
   const pipe=data.pipeline||{};
+  const topicText=(pipe.article&&pipe.article.title)?pipe.article.title.slice(0,22):'等待任務';
   const tt=document.getElementById('table-topic');
-  if(tt)tt.textContent=(pipe.article&&pipe.article.title)?pipe.article.title.slice(0,18):'等待任務';
+  if(tt)tt.textContent=topicText;
+  const topicChip=document.getElementById('overview-topic-chip'); if(topicChip) topicChip.textContent=topicText;
+  const selectedLabel = selectedAgentId ? ((FM.find(a=>a.id===selectedAgentId)||{}).label||selectedAgentId) : '無';
+  const selectedEl=document.getElementById('overview-selected'); if(selectedEl) selectedEl.textContent=selectedLabel;
+  const tbSel=document.getElementById('tb-selected'); if(tbSel) tbSel.textContent=selectedLabel;
   const tw=document.getElementById('tb-working');if(tw){const sp=tw.querySelector('span');if(sp)sp.textContent=wk;}
   const twa=document.getElementById('tb-waiting');if(twa){const sp=twa.querySelector('span');if(sp)sp.textContent=wt;}
   const ti=document.getElementById('tb-idle');if(ti){const sp=ti.querySelector('span');if(sp)sp.textContent=id;}
