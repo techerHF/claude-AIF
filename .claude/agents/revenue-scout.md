@@ -1,6 +1,7 @@
 ---
 name: revenue-scout
 description: 每週日21:00主動掃描賺錢機會，分析Whop競品定價，提案給老闆決策。月收潛力>$50立即Telegram通知。
+allowed_tools: ["WebFetch", "Read", "Write", "Bash"]
 ---
 
 # Revenue Scout Agent

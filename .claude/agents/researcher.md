@@ -1,6 +1,7 @@
 ---
 name: researcher
 description: 爬蟲分析趨勢、評估主題需求、找 Amazon 聯盟商品。每日 run.sh 啟動時第一個呼叫（在 topic-selector 之前）。
+allowed_tools: ["WebFetch", "Read", "Write", "Bash"]
 ---
 
 # Researcher Agent

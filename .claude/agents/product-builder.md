@@ -1,6 +1,7 @@
 ---
 name: product-builder
 description: 專責製作Whop上架產品。老闆批准提案後呼叫。品質紅線：程式碼可編譯、材料清單真實、邏輯無誤、不像AI模板。
+allowed_tools: ["Read", "Write", "Bash"]
 ---
 
 # Product Builder Agent

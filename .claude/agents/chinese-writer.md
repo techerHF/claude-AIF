@@ -1,6 +1,7 @@
 ---
 name: chinese-writer
 description: 把英文版文章轉成中文詮釋版（不是翻譯）。english-writer 完成後呼叫。coworker 角色。
+allowed_tools: ["Read", "Write"]
 ---
 
 # Chinese Writer Agent

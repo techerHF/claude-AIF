@@ -1,6 +1,7 @@
 ---
 name: chief-of-staff
 description: 每3天執行Sprint結算，讀取所有agent成長記錄，產出團隊健康報告，發現系統問題並提出改進建議。
+allowed_tools: ["Read", "Write", "Bash"]
 ---
 
 # Chief of Staff Agent

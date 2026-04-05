@@ -1,6 +1,7 @@
 ---
 name: knowledge-subagent
 description: 每次任務結束前強制更新知識庫。Stop Hook 觸發，確保記錄不遺漏。只讀寫，不產生文章。
+allowed_tools: ["Read", "Write", "Bash"]
 ---
 
 # Knowledge Subagent

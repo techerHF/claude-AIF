@@ -1,6 +1,7 @@
 ---
 name: english-writer
 description: 專門撰寫英文版文章（Reddit 摘要版和 Medium 完整版）。topic-selector 完成後呼叫。coworker 角色。
+allowed_tools: ["Read", "Write"]
 ---
 
 # English Writer Agent
