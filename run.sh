@@ -55,6 +55,10 @@ f.write_text(json.dumps(d))
 " 2>/dev/null || true
 
 echo "[step0] 爬蟲完成（允許失敗）" | tee -a "$LOG_FILE"
+
+# 爬蟲成長記錄
+bash .claude/hooks/agent-growth-update.sh "researcher" "success" \
+  "掃描 $(date +%Y-%m-%d) 需求信號，結果寫入 logs/demand_signals.json" 2>/dev/null || true
 # ────────────────────────────────────────────────────────────────────
 
 claude -p "
@@ -171,5 +175,17 @@ try:
 except Exception as e:
     pass
 " 2>/dev/null || true
+
+# 處理 Telegram command queue（如有老闆指令）
+if [ -f "logs/command-queue.json" ]; then
+  python3 -c "
+import json,pathlib
+qf=pathlib.Path('logs/command-queue.json')
+q=json.loads(qf.read_text()) if qf.exists() else []
+pending=[c for c in q if c.get('status')=='pending']
+if pending:
+    print(f'有 {len(pending)} 條老闆指令待處理')
+" 2>/dev/null || true
+fi
 
 echo "執行完畢：$(date)" >> "$LOG_FILE"
