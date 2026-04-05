@@ -137,4 +137,41 @@ d['today']+=1; d['total']+=1
 f.write_text(json.dumps(d))
 " 2>/dev/null || true
 
+# 更新 writer agent 成長記錄
+python3 -c "
+from pathlib import Path
+from datetime import datetime
+import json
+
+today = datetime.now().strftime('%Y-%m-%d')
+now = datetime.now().strftime('%Y-%m-%d %H:%M')
+progress = Path('logs/progress.json')
+
+try:
+    prog = json.loads(progress.read_text()) if progress.exists() else []
+    today_items = [p for p in prog if p.get('date','') == today]
+    if today_items:
+        item = today_items[-1]
+        title = item.get('title', 'unknown')
+        status = item.get('status', 'unknown')
+        growth = Path('.agent-growth/writer.md')
+        if growth.exists():
+            content = growth.read_text()
+            entry = f'\n- {now}：產出《{title}》status={status}'
+            content = content.replace('（系統自動更新）', now, 1)
+            lines = content.splitlines()
+            for i,l in enumerate(lines):
+                if l.strip() == '0' and i > 0 and '執行次數' in lines[i-1]:
+                    try: lines[i] = str(int(l)+1)
+                    except: lines[i] = '1'
+            content = '\n'.join(lines)
+            if '已掌握的有效模式' in content:
+                content = content.replace(
+                    '（記錄什麼方法有效，有數據支撐）',
+                    f'（記錄什麼方法有效，有數據支撐）{entry}', 1)
+            growth.write_text(content)
+except Exception as e:
+    pass
+" 2>/dev/null || true
+
 echo "執行完畢：$(date)" >> "$LOG_FILE"
