@@ -1,0 +1,14 @@
+{
+  "monthly_cost": 200,
+  "month": "2026-04",
+  "platforms": {
+    "whop_guide":   {"revenue": 0, "sales": 0, "product": "$9 指南"},
+    "whop_pack":    {"revenue": 0, "sales": 0, "product": "$19 專案包"},
+    "whop_sub":     {"revenue": 0, "sales": 0, "product": "$5/月訂閱"},
+    "amazon":       {"revenue": 0, "clicks": 0},
+    "medium":       {"revenue": 0, "views": 0}
+  },
+  "total_revenue": 0,
+  "profit_loss": -200,
+  "break_even_progress": "0%"
+}

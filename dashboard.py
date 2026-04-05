@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI 無人工廠 Dashboard v8
+AI 無人工廠 Dashboard v9
 — 像素辦公室：PixiJS 空間型辦公室 + 3 欄佈局 + 對話氣泡 + 檔案飛行動畫
 執行：python3 ~/ai-factory/dashboard.py
 """
@@ -140,7 +140,9 @@ def read_api_env():
     try:
         s = json.loads(Path.home().joinpath(".claude/settings.json").read_text())
         env = s.get("env",{})
-        return (env.get("ANTHROPIC_API_KEY",""),
+        # Minimax API 使用 ANTHROPIC_AUTH_TOKEN；標準 Anthropic 使用 ANTHROPIC_API_KEY
+        token = env.get("ANTHROPIC_AUTH_TOKEN","") or env.get("ANTHROPIC_API_KEY","")
+        return (token,
                 env.get("ANTHROPIC_BASE_URL","https://api.anthropic.com").rstrip("/"),
                 env.get("ANTHROPIC_MODEL","claude-3-5-sonnet-20241022"))
     except: return ("","https://api.anthropic.com","claude-3-5-sonnet-20241022")
@@ -339,14 +341,14 @@ def do_chat(message):
     api_key, base_url, model = read_api_env()
     if not api_key:
         return (
-            "⚠ 未設定 ANTHROPIC_API_KEY\n\n"
+            "⚠ 未設定 ANTHROPIC_AUTH_TOKEN\n\n"
             "在 VPS 執行：\n"
             "python3 -c \"\nimport json,pathlib\n"
             "f=pathlib.Path.home()/'.claude/settings.json'\n"
             "s=json.loads(f.read_text()) if f.exists() else {}\n"
-            "s.setdefault('env',{})['ANTHROPIC_API_KEY']='sk-ant-YOUR_KEY'\n"
+            "s.setdefault('env',{})['ANTHROPIC_AUTH_TOKEN']='your-minimax-token'\n"
             "f.write_text(json.dumps(s,indent=2))\nprint('OK')\n\"\n\n"
-            "替換 sk-ant-YOUR_KEY 後重啟 dashboard。"
+            "替換 your-minimax-token 後重啟 dashboard。"
         )
     try:
         _chat_history = _chat_history[-8:]
@@ -363,9 +365,15 @@ def do_chat(message):
             ),
             "messages": msgs
         }).encode()
+        # Minimax API 使用 Authorization: Bearer，標準 Anthropic 使用 x-api-key
+        is_minimax = "minimax" in base_url.lower() or "api.minimax" in base_url.lower()
+        if is_minimax:
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        else:
+            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                       "content-type": "application/json"}
         req = urllib.request.Request(f"{base_url}/v1/messages", data=payload,
-            headers={"x-api-key":api_key,"anthropic-version":"2023-06-01",
-                     "content-type":"application/json"})
+            headers=headers)
         with urllib.request.urlopen(req, timeout=45) as resp:
             result = json.loads(resp.read())
             reply  = result["content"][0]["text"]
@@ -466,7 +474,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI 無人工廠 v8 — 像素辦公室</title>
+<title>AI 無人工廠 v9 — 指揮中心</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
 <style>
@@ -514,7 +522,7 @@ body{display:flex;flex-direction:column;}
   padding:4px 14px;font-size:10px;color:var(--warn);display:none;align-items:center;gap:8px;flex-shrink:0;}
 
 /* KPI BAR */
-.kpi-bar{display:grid;grid-template-columns:repeat(6,1fr);
+.kpi-bar{display:grid;grid-template-columns:repeat(8,1fr);
   background:var(--bg1);border-bottom:2px solid var(--b0);flex-shrink:0;}
 .kpi-c{padding:7px 10px;border-right:1px solid var(--b0);transition:.15s;}
 .kpi-c:last-child{border-right:none;}
@@ -690,7 +698,7 @@ body{display:flex;flex-direction:column;}
 
 <nav class="topbar">
   <div style="display:flex;align-items:center;gap:12px;">
-    <div class="logo">⬡ AI FACTORY<span class="logo-v">v8 PIXEL OFFICE</span></div>
+    <div class="logo">⬡ AI FACTORY<span class="logo-v">v9 HQ</span></div>
     <div class="spill si" id="spill"><span class="sdot"></span><span class="stxt">INIT</span></div>
   </div>
   <div class="tb-r">
@@ -710,6 +718,8 @@ body{display:flex;flex-direction:column;}
   <div class="kpi-c"><div class="kpi-v" id="k3">0</div><div class="kpi-l">API 累計</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k4">--</div><div class="kpi-l">系統健康</div></div>
   <div class="kpi-c"><div class="kpi-v" id="k5" style="font-size:9px;">--</div><div class="kpi-l">模型</div></div>
+  <div class="kpi-c"><div class="kpi-v ok" id="k6">$0</div><div class="kpi-l">本月收益</div></div>
+  <div class="kpi-c"><div class="kpi-v warn" id="k7">-$200</div><div class="kpi-l">距損益平衡</div></div>
 </div>
 
 <div class="workspace">
@@ -738,6 +748,7 @@ body{display:flex;flex-direction:column;}
       <div class="rp-tab" onclick="switchTab('feed',this)">活動</div>
       <div class="rp-tab" onclick="switchTab('chat',this)">聊天</div>
       <div class="rp-tab" onclick="switchTab('arts',this)">文章</div>
+      <div class="rp-tab" onclick="switchTab('standup',this);loadStandup()">DAILY</div>
     </div>
     <div class="rp-pane active" id="pane-detail">
       <div id="ad-inner">
@@ -773,6 +784,13 @@ body{display:flex;flex-direction:column;}
         <span id="arts-count" style="font-size:9px;color:var(--t2)"></span>
       </div>
       <div class="arts-body" id="arts-list" style="flex:1;overflow-y:auto;"></div>
+    </div>
+    <div class="rp-pane" id="pane-standup">
+      <div class="ch" style="flex-shrink:0;">
+        <div class="ct"><span class="cdot2" style="background:var(--pur);animation:pls 3s infinite;"></span>每日 Standup</div>
+        <span style="font-size:8px;color:var(--t2)">08/16/00 自動</span>
+      </div>
+      <div id="standup-body" style="flex:1;overflow-y:auto;padding:10px;font-size:9px;line-height:1.7;color:var(--t1);white-space:pre-wrap;"></div>
     </div>
   </div>
 
@@ -1046,7 +1064,19 @@ async function fetchNow(){
   clearInterval(timer);countdown=5;
   try{const r=await fetch('/api/status');const d=await r.json();lastData=d;render(d);}
   catch(e){setPill('se','OFFLINE');}
+  fetchRevenue();
   startTimer();
+}
+async function fetchRevenue(){
+  try{
+    const r=await fetch('/api/revenue');const d=await r.json();
+    const rev=d.total_revenue||0,cost=d.monthly_cost||200;
+    const gap=rev-cost;
+    document.getElementById('k6').textContent='$'+rev;
+    document.getElementById('k6').className='kpi-v '+(rev>0?'ok':'warn');
+    document.getElementById('k7').textContent=(gap>=0?'+':'')+'$'+gap;
+    document.getElementById('k7').className='kpi-v '+(gap>=0?'ok':'warn');
+  }catch(e){}
 }
 function startTimer(){
   clearInterval(timer);
@@ -1162,9 +1192,19 @@ function renderArts(arts){
 function switchTab(name,btn){
   document.querySelectorAll('.rp-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  const mp={detail:'pane-detail',feed:'pane-feed',chat:'pane-chat',arts:'pane-arts'};
+  const mp={detail:'pane-detail',feed:'pane-feed',chat:'pane-chat',arts:'pane-arts',standup:'pane-standup'};
   document.querySelectorAll('.rp-pane').forEach(p=>p.classList.remove('active'));
   const t=document.getElementById(mp[name]);if(t)t.classList.add('active');
+}
+async function loadStandup(){
+  const el=document.getElementById('standup-body');
+  if(!el)return;
+  el.textContent='載入中...';
+  try{
+    const r=await fetch('/api/standup');const d=await r.json();
+    const lines=(d.recent||[]).filter(l=>l.trim());
+    el.textContent=lines.length?lines.join('\n'):'（尚無 standup 記錄）\n每天 08:00、16:00、00:00 自動生成';
+  }catch(e){el.textContent='載入失敗';}
 }
 
 /* ─── CHAT ─── */
@@ -1231,6 +1271,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path=="/api/status":
             self._json(json.dumps(get_status_data(),ensure_ascii=False).encode())
+        elif self.path=="/api/revenue":
+            d = rj(".team-memory/revenue-tracking.json", {})
+            self._json(json.dumps(d, ensure_ascii=False).encode())
+        elif self.path=="/api/proposals":
+            f = BASE/".team-memory/proposals.md"
+            content = f.read_text(encoding="utf-8") if f.exists() else ""
+            self._json(json.dumps({"content": content}, ensure_ascii=False).encode())
+        elif self.path=="/api/standup":
+            f = BASE/".team-memory/standup-log.md"
+            lines = f.read_text(encoding="utf-8").strip().split("\n") if f.exists() else []
+            self._json(json.dumps({"recent": lines[-30:]}, ensure_ascii=False).encode())
         elif self.path.startswith("/api/article"):
             parsed=urllib.parse.urlparse(self.path)
             params=urllib.parse.parse_qs(parsed.query)
@@ -1275,5 +1326,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     port=int(os.environ.get("DASHBOARD_PORT",3000))
-    print(f"Dashboard v8 啟動：http://0.0.0.0:{port}")
+    print(f"Dashboard v9 啟動：http://0.0.0.0:{port}")
     HTTPServer(("0.0.0.0",port),Handler).serve_forever()

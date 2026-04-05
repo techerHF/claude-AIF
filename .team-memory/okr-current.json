@@ -1,0 +1,22 @@
+{
+  "quarter": "2026-Q2",
+  "objectives": [
+    {
+      "id": "O1",
+      "title": "達到月度損益平衡",
+      "key_results": [
+        {"kr": "月收入 ≥ $200", "current": 0, "target": 200, "unit": "USD"},
+        {"kr": "Whop 首次銷售", "current": 0, "target": 1, "unit": "筆"},
+        {"kr": "累計發文 20 篇", "current": 0, "target": 20, "unit": "篇"}
+      ]
+    },
+    {
+      "id": "O2",
+      "title": "建立可信任品牌",
+      "key_results": [
+        {"kr": "平均 upvotes > 20", "current": 0, "target": 20, "unit": "votes"},
+        {"kr": "Reddit karma > 100", "current": 0, "target": 100, "unit": "karma"}
+      ]
+    }
+  ]
+}

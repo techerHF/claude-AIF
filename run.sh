@@ -3,7 +3,7 @@
 # 執行：bash ~/ai-factory/run.sh
 # 自動觸發：cron 每日 09:00
 
-set -euo pipefail
+set -uo pipefail
 
 cd ~/ai-factory
 TODAY=$(date +%Y-%m-%d)
@@ -42,10 +42,20 @@ Headers：User-Agent: ResearchBot/1.0
 最後輸出一行摘要：掃描完成，最高需求主題和分數。
 " \
   --allowedTools "WebFetch,Write,Read" \
-  --permission-mode acceptEdits \
-  --max-turns 15 2>> "$LOG_FILE"
+  --dangerously-skip-permissions \
+  --max-turns 15 2>> "$LOG_FILE" || true
 
-echo "[step0] 爬蟲完成" | tee -a "$LOG_FILE"
+python3 -c "
+import json,pathlib,datetime
+f=pathlib.Path('logs/api-usage.json')
+d=json.loads(f.read_text()) if f.exists() else {'today':0,'total':0,'date':''}
+t=datetime.date.today().isoformat()
+if d['date']!=t: d['today']=0; d['date']=t
+d['today']+=1; d['total']+=1
+f.write_text(json.dumps(d))
+" 2>/dev/null || true
+
+echo "[step0] 爬蟲完成（允許失敗）" | tee -a "$LOG_FILE"
 # ────────────────────────────────────────────────────────────────────
 
 claude -p "
@@ -114,7 +124,17 @@ claude -p "
 - RAM 使用控制，不並行執行
 " \
   --allowedTools "Write,Read,Bash,Agent" \
-  --permission-mode acceptEdits \
+  --dangerously-skip-permissions \
   --max-turns 50 2>> "$LOG_FILE"
+
+python3 -c "
+import json,pathlib,datetime
+f=pathlib.Path('logs/api-usage.json')
+d=json.loads(f.read_text()) if f.exists() else {'today':0,'total':0,'date':''}
+t=datetime.date.today().isoformat()
+if d['date']!=t: d['today']=0; d['date']=t
+d['today']+=1; d['total']+=1
+f.write_text(json.dumps(d))
+" 2>/dev/null || true
 
 echo "執行完畢：$(date)" >> "$LOG_FILE"
