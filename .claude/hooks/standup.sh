@@ -31,6 +31,5 @@ claude -p "
 如果有阻礙，另外執行：
 bash ~/ai-factory/.claude/hooks/telegram-notify.sh \"⚠️ Standup 阻礙：[問題摘要]\"
 " \
-  --dangerously-skip-permissions \
   --allowedTools "Read,Write,Bash" \
   --max-turns 15 2>&1

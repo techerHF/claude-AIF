@@ -42,7 +42,6 @@ Headers：User-Agent: ResearchBot/1.0
 最後輸出一行摘要：掃描完成，最高需求主題和分數。
 " \
   --allowedTools "WebFetch,Write,Read" \
-  --dangerously-skip-permissions \
   --max-turns 15 2>> "$LOG_FILE" || true
 
 python3 -c "
@@ -124,7 +123,6 @@ claude -p "
 - RAM 使用控制，不並行執行
 " \
   --allowedTools "Write,Read,Bash,Agent" \
-  --dangerously-skip-permissions \
   --max-turns 50 2>> "$LOG_FILE"
 
 python3 -c "
