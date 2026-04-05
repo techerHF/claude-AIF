@@ -373,10 +373,19 @@ def do_chat(message):
         req = urllib.request.Request(f"{base_url}/v1/messages", data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=45) as resp:
             result = json.loads(resp.read())
-            # Anthropic format: {"content": [{"type":"text","text":"..."}]}
+            # Anthropic format (incl. MiniMax-M2.7 thinking blocks)
+            # content array may have: [{"type":"thinking","thinking":"..."},{"type":"text","text":"..."}]
             if "content" in result and isinstance(result["content"], list) and result["content"]:
-                item = result["content"][0]
-                reply = item.get("text") or item.get("content") or json.dumps(item)[:200]
+                reply = ""
+                for item in result["content"]:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        reply = item.get("text",""); break
+                if not reply:  # fallback: any item with "text" key
+                    for item in result["content"]:
+                        if isinstance(item, dict) and item.get("text"):
+                            reply = item["text"]; break
+                if not reply:
+                    reply = f"[解析失敗] {json.dumps(result['content'])[:200]}"
             # OpenAI/MiniMax chat format: {"choices": [{"message":{"content":"..."}}]}
             elif "choices" in result and result["choices"]:
                 reply = result["choices"][0].get("message",{}).get("content","（空回應）")
