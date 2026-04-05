@@ -373,12 +373,26 @@ def do_chat(message):
         req = urllib.request.Request(f"{base_url}/v1/messages", data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=45) as resp:
             result = json.loads(resp.read())
-            reply  = result["content"][0]["text"]
+            # Anthropic format: {"content": [{"type":"text","text":"..."}]}
+            if "content" in result and isinstance(result["content"], list) and result["content"]:
+                item = result["content"][0]
+                reply = item.get("text") or item.get("content") or json.dumps(item)[:200]
+            # OpenAI/MiniMax chat format: {"choices": [{"message":{"content":"..."}}]}
+            elif "choices" in result and result["choices"]:
+                reply = result["choices"][0].get("message",{}).get("content","（空回應）")
+            # Direct string content
+            elif "content" in result and isinstance(result["content"], str):
+                reply = result["content"]
+            else:
+                reply = f"[回應格式未知] {json.dumps(result)[:300]}"
             _chat_history.append({"role":"user","content":message})
             _chat_history.append({"role":"assistant","content":reply})
             return reply
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="ignore")[:200]
+        return f"❌ HTTP {e.code}：{body}"
     except Exception as e:
-        return f"❌ API 錯誤：{str(e)[:150]}"
+        return f"❌ API 錯誤：{type(e).__name__}: {str(e)[:150]}"
 
 def post_to_devto(article_name):
     api_key = os.environ.get("DEVTO_API_KEY","")
@@ -1496,6 +1510,22 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(json.dumps({"content":c},ensure_ascii=False).encode())
                     return
             self.send_response(404); self.end_headers()
+        elif self.path=="/api/health":
+            api_key, base_url, model = read_api_env()
+            crons = cron_lines()
+            err_lines = [l.strip() for l in rt("logs/error.log",3) if l.strip()]
+            cron_tail = rt("logs/cron.log",3)
+            checks = {
+                "api_token":  "ok" if api_key else "missing",
+                "base_url":   base_url or "not set",
+                "model":      model or "not set",
+                "run_sh":     "ok" if (BASE/"run.sh").exists() else "missing",
+                "logs_dir":   "ok" if (BASE/"logs").exists() else "missing",
+                "crontab":    f"{len(crons)} jobs",
+                "last_error": err_lines[-1][:100] if err_lines else "none",
+                "last_cron":  cron_tail[-1][:100] if cron_tail else "no log",
+            }
+            self._json(json.dumps({"status":"ok","checks":checks},ensure_ascii=False).encode())
         elif self.path.startswith("/api/article"):
             parsed=urllib.parse.urlparse(self.path)
             params=urllib.parse.parse_qs(parsed.query)
