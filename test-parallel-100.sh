@@ -52,34 +52,59 @@ f.write_text(json.dumps({'cycle':${CURRENT_CYCLE:-0},'total_done':$TOTAL_DONE,'p
 # ── 初始化進度檔 ──
 echo "{\"cycle\":0,\"total_done\":0,\"pass\":0,\"fail\":0,\"status\":\"running\"}" > "$PROGRESS_FILE"
 
-# ── Keepalive 防斷線（每 25 秒）──
+# ── Keepalive 防斷線（每 25 秒，從進度檔讀取 — 修正 subshell 無法讀父變數的問題）──
 keepalive_bg() {
+  local PF="$1"
   while true; do
     sleep 25
-    echo "[⏱ $(date '+%H:%M:%S')] 🏭 後台運行中... cycle=${CURRENT_CYCLE:-0}/10 done=${TOTAL_DONE}/100 ✅${TOTAL_PASS} ❌${TOTAL_FAIL}"
+    if [ -f "$PF" ]; then
+      PROG=$(python3 -c "
+import json,sys
+try:
+  d=json.load(open('$PF'))
+  print(f\"cycle={d.get('cycle',0)}/10 done={d.get('total_done',0)}/100 \u2705{d.get('pass',0)} \u274c{d.get('fail',0)}\")
+except: print('讀取中...')
+" 2>/dev/null)
+    else
+      PROG="初始化中..."
+    fi
+    echo "[⏱ $(date '+%H:%M:%S')] 🏭 後台運行中... ${PROG}"
   done
 }
-keepalive_bg &
+keepalive_bg "$PROGRESS_FILE" &
 KEEPALIVE_PID=$!
 trap "kill $KEEPALIVE_PID 2>/dev/null; echo '測試中止'" EXIT
 
 # ── GitHub push（帶 token 恢復）──
 push_progress() {
   local CYCLE="$1"
-  # 嘗試從 .env 讀取 token
+  # 依優先順序讀取 GitHub token：.env → settings.json → 環境變數
+  local GHTOKEN=""
   if [ -f .env ]; then
     GHTOKEN=$(grep "^GITHUB_TOKEN=" .env | cut -d= -f2 | tr -d '"' | tr -d "'")
+  fi
+  if [ -z "$GHTOKEN" ]; then
+    GHTOKEN=$(python3 -c "
+import json,pathlib
+try:
+  s=json.loads((pathlib.Path.home()/'.claude/settings.json').read_text())
+  print(s.get('env',{}).get('GITHUB_TOKEN',''))
+except: print('')
+" 2>/dev/null)
+  fi
+  if [ -z "$GHTOKEN" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+    GHTOKEN="$GITHUB_TOKEN"
+  fi
+  if [ -n "$GHTOKEN" ]; then
     GHREPO=$(git remote get-url origin 2>/dev/null | sed 's|https://[^@]*@||' | sed 's|https://||')
-    if [ -n "$GHTOKEN" ] && [ -n "$GHREPO" ]; then
-      git remote set-url origin "https://${GHTOKEN}@${GHREPO}" 2>/dev/null
-    fi
+    git remote set-url origin "https://${GHTOKEN}@${GHREPO}" 2>/dev/null
   fi
   git add logs/ .agent-growth/ .knowledge/ articles/ 2>/dev/null
   git commit -m "v3 cycle ${CYCLE}/10 | ✅${TOTAL_PASS} ❌${TOTAL_FAIL} | $(date '+%H:%M')" \
     --allow-empty 2>/dev/null
   git push origin master 2>/dev/null \
     && echo "  [GitHub ✅] Cycle ${CYCLE} 已推送" \
-    || echo "  [GitHub ⚠️ ] Push 失敗（token 未設定？繼續測試）"
+    || echo "  [GitHub ⚠️ ] Push 失敗（token: ${GHTOKEN:+已設定，檢查權限}${GHTOKEN:-未設定}）"
 }
 
 # ── Agent 中文名對照 ──
@@ -177,6 +202,7 @@ for CYCLE in $(seq 1 10); do
   echo ""
   echo "  ┌─ BATCH A：【研究員】研究 + 【營收偵察員】評估"
   echo "  │  正在喚醒 2 個 agent..."
+  _TMP_A=$(mktemp)
   BATCH_A_RESULT=$(timeout 120 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10）
 
@@ -217,21 +243,25 @@ ${LAST_MSGS}
 
 兩個都完成後，輸出：
 「✅ BATCH_A_DONE:C${CYCLE} R:[RESEARCHER_DONE/FAIL] S:[SCOUT_DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,WebFetch" --max-turns 6 2>/dev/null)
+" --allowedTools "Agent,Read,Write,WebFetch" --max-turns 6 2>"$_TMP_A")
 
   if echo "$BATCH_A_RESULT" | grep -q "BATCH_A_DONE"; then
-    # 提取並顯示 agent 思考
     echo "$BATCH_A_RESULT" | grep -E "【(研究員|營收偵察員)" | head -4 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch A 完成（$(echo "$BATCH_A_RESULT" | grep "BATCH_A_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   else
-    echo "  └─ ❌ Batch A 失敗（$(echo "$BATCH_A_RESULT" | tail -2 | tr '\n' ' ')）"
+    _ERR=$(cat "$_TMP_A" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_A_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch A 失敗：${_ERR:-（無錯誤輸出，可能是 timeout）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch A 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   fi
+  rm -f "$_TMP_A"
 
   # ── BATCH B：【選題師】──
   echo ""
   echo "  ┌─ BATCH B：【選題師】確認主題"
+  _TMP_B=$(mktemp)
   BATCH_B_RESULT=$(timeout 90 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch B）
 
@@ -249,16 +279,20 @@ ${LAST_MSGS}
 6. 在留言板加入：
    [$TODAY C${CYCLE}][選題師→撰稿人] 主題確認：$TOPIC，請重點著墨[研究員建議的切入點]
 7. 輸出：BATCH_B_DONE:C${CYCLE} TOPIC_CONFIRMED
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 4 2>/dev/null)
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 4 2>"$_TMP_B")
 
   if echo "$BATCH_B_RESULT" | grep -q "BATCH_B_DONE"; then
     echo "$BATCH_B_RESULT" | grep "【選題師" | head -2 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch B 完成"
     TOTAL_PASS=$((TOTAL_PASS + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   else
-    echo "  └─ ❌ Batch B 失敗"
+    _ERR=$(cat "$_TMP_B" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_B_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch B 失敗：${_ERR:-（timeout 或無輸出）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch B 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   fi
+  rm -f "$_TMP_B"
 
   # ── BATCH C：【撰稿人】+【英文作家】+【SEO師】三路平行 ──
   echo ""
@@ -270,6 +304,7 @@ ${LAST_MSGS}
   SEL_MSG=$(grep "選題師→撰稿人" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無留言")
   RES_MSG=$(grep "研究員→全隊" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無留言")
 
+  _TMP_C=$(mktemp)
   BATCH_C_RESULT=$(timeout 240 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch C）
 
@@ -319,16 +354,20 @@ ${LAST_MSGS}
 
 全部完成後輸出：
 「BATCH_C_DONE:C${CYCLE} W:[DONE/FAIL] E:[DONE/FAIL] S:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 12 2>/dev/null)
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 12 2>"$_TMP_C")
 
   if echo "$BATCH_C_RESULT" | grep -q "BATCH_C_DONE"; then
     echo "$BATCH_C_RESULT" | grep -E "【(撰稿人|英文作家|SEO師)" | head -6 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch C 完成（$(echo "$BATCH_C_RESULT" | grep "BATCH_C_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   else
-    echo "  └─ ❌ Batch C 失敗（$(echo "$BATCH_C_RESULT" | tail -1)）"
+    _ERR=$(cat "$_TMP_C" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_C_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch C 失敗：${_ERR:-（timeout 4分鐘，agent 未完成）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch C 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   fi
+  rm -f "$_TMP_C"
 
   # ── BATCH D：【審稿人】+【中文詮釋師】平行 ──
   echo ""
@@ -336,6 +375,7 @@ ${LAST_MSGS}
 
   WRITER_MSG=$(grep "撰稿人→審稿人" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無")
 
+  _TMP_D=$(mktemp)
   BATCH_D_RESULT=$(timeout 180 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch D）
 
@@ -369,7 +409,7 @@ ${LAST_MSGS}
 
 完成後輸出：
 「BATCH_D_DONE:C${CYCLE} RV:[RESULT] CH:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 8 2>/dev/null)
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 8 2>"$_TMP_D")
 
   REVIEW_RESULT=$(echo "$BATCH_D_RESULT" | grep -o "RESULT:[A-Z]*" | head -1 | cut -d: -f2)
   if echo "$BATCH_D_RESULT" | grep -q "BATCH_D_DONE"; then
@@ -377,9 +417,13 @@ ${LAST_MSGS}
     echo "  └─ ✅ Batch D 完成 | 審查：${REVIEW_RESULT:-?}"
     TOTAL_PASS=$((TOTAL_PASS + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   else
-    echo "  └─ ❌ Batch D 失敗"
+    _ERR=$(cat "$_TMP_D" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_D_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch D 失敗：${_ERR:-（timeout 3分鐘）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch D 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   fi
+  rm -f "$_TMP_D"
 
   # ── BATCH E：【發文師】+【知識管家】+【回饋偵察員】三路平行 ──
   echo ""
@@ -388,6 +432,7 @@ ${LAST_MSGS}
   SIMULATED_CM=$((RANDOM % 20 + 2))
   SEO_MSG=$(grep "SEO師→發文師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無SEO建議")
 
+  _TMP_E=$(mktemp)
   BATCH_E_RESULT=$(timeout 180 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch E）
 
@@ -433,22 +478,27 @@ ${LAST_MSGS}
 
 完成後輸出：
 「BATCH_E_DONE:C${CYCLE} P:[DONE/FAIL] K:[DONE/FAIL] F:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 10 2>/dev/null)
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 10 2>"$_TMP_E")
 
   if echo "$BATCH_E_RESULT" | grep -q "BATCH_E_DONE"; then
     echo "$BATCH_E_RESULT" | grep -E "【(發文師|知識管家|回饋偵察員)" | head -6 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch E 完成（$(echo "$BATCH_E_RESULT" | grep "BATCH_E_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   else
-    echo "  └─ ❌ Batch E 失敗"
+    _ERR=$(cat "$_TMP_E" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_E_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch E 失敗：${_ERR:-（timeout 3分鐘）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch E 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   fi
+  rm -f "$_TMP_E"
 
   # ── BATCH F：【風格調音師】+【產品建構師】平行 ──
   echo ""
   echo "  ┌─ BATCH F：【風格調音師】調整 + 【產品建構師】評估"
   FB_MSG=$(grep "回饋偵察員→風格調音師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無回饋")
 
+  _TMP_F=$(mktemp)
   BATCH_F_RESULT=$(timeout 150 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch F）
 
@@ -481,53 +531,80 @@ ${LAST_MSGS}
 
 完成後輸出：
 「BATCH_F_DONE:C${CYCLE} ST:[DONE/FAIL] PB:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write" --max-turns 8 2>/dev/null)
+" --allowedTools "Agent,Read,Write" --max-turns 8 2>"$_TMP_F")
 
   if echo "$BATCH_F_RESULT" | grep -q "BATCH_F_DONE"; then
     echo "$BATCH_F_RESULT" | grep -E "【(風格調音師|產品建構師)" | head -4 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch F 完成"
     TOTAL_PASS=$((TOTAL_PASS + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   else
-    echo "  └─ ❌ Batch F 失敗"
+    _ERR=$(cat "$_TMP_F" 2>/dev/null | tail -3 | tr '\n' ' ')
+    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_F_RESULT" | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch F 失敗：${_ERR:-（timeout 2.5分鐘）}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch F 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   fi
+  rm -f "$_TMP_F"
 
-  # ── BATCH G：【秘書長】彙報 + 讀取留言板 ──
+  # ── BATCH G：【秘書長】診斷彙報（不只播報，要真正分析）──
   echo ""
-  echo "  ┌─ BATCH G：【秘書長】彙報全輪"
-  ALL_MSGS=$(tail -10 "$MSG_BOARD" 2>/dev/null || echo "（無）")
+  echo "  ┌─ BATCH G：【秘書長】診斷全輪"
+  ALL_MSGS=$(tail -15 "$MSG_BOARD" 2>/dev/null || echo "（無）")
+  THIS_RATE=$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))
+  # 統計本輪失敗模式
+  FAIL_LOG=$(grep "C${CYCLE}.*診斷.*失敗" "$MSG_BOARD" 2>/dev/null | tr '\n' ' ' || echo "無失敗記錄")
 
+  _TMP_G=$(mktemp)
   BATCH_G_RESULT=$(timeout 120 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch G）
 
-輸出：「【秘書長 👔】思考中：讀取本輪所有 agent 的留言板訊息，準備向老闆彙報...」
+輸出：「【秘書長 👔】思考中：這輪通過率 ${THIS_RATE}%，失敗批次：${FAIL_LOG}，要找出模式...」
 
 使用 Agent tool 呼叫 chief-of-staff 子 agent。
 
-本輪留言板記錄（agent 之間的溝通）：
+本輪留言板（所有 agent 的互動）：
 ${ALL_MSGS}
 
-任務（第 ${CYCLE}/10 輪彙報）：
-1. 讀取 .agent-growth/chief-of-staff.md
-2. 統計本輪表現：✅${TOTAL_PASS} ❌${TOTAL_FAIL} 通過率約$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))%
-3. 在 .agent-growth/chief-of-staff.md 加入（必須寫入）：
-   [$TODAY C${CYCLE}] 第${CYCLE}輪：$TOPIC | UV:$SIMULATED_UV | 審查:${REVIEW_RESULT:-?} | agent留言:[N]條 | 通過率:$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))%
-4. 在留言板加入：
-   [$TODAY C${CYCLE}][秘書長→全隊] 第${CYCLE}輪結束，通過率$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))%，下輪重點：[一句指示]
-5. 每 3 輪才發 Telegram（第 3、6、9 輪）：
-   $([ $((CYCLE % 3)) -eq 0 ] && echo "執行：bash .claude/hooks/telegram-notify.sh '📊 第${CYCLE}/10輪｜✅${TOTAL_PASS} ❌${TOTAL_FAIL}｜UV:$SIMULATED_UV｜留言板活躍'" || echo "本輪跳過 Telegram")
-6. 輸出：BATCH_G_DONE:C${CYCLE} RATE:$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))%
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 5 2>/dev/null)
+本輪失敗診斷記錄：
+${FAIL_LOG}
+
+═══ 你是秘書長，不是播報機。你的工作是診斷，不只是彙報。═══
+
+任務（第 ${CYCLE}/10 輪）：
+
+1. 讀取 .agent-growth/chief-of-staff.md（了解歷史模式）
+
+2. 分析本輪數據，回答三個問題：
+   - 哪些 batch 失敗？失敗的共同原因是什麼（timeout？API錯誤？agent 沒有輸出正確格式？）
+   - 留言板上哪個 agent 的訊息最有價值？哪個最沒用？
+   - 如果你是管理者，你會對下一輪做什麼具體調整？
+
+3. 在 .agent-growth/chief-of-staff.md 加入（必須寫入，要有具體分析，不能只是數字）：
+   [$TODAY C${CYCLE}] 第${CYCLE}輪診斷：通過率${THIS_RATE}% | 失敗原因:[具體] | 留言板品質:[評估] | 下輪建議:[一句具體行動]
+
+4. 在留言板加入（給下輪所有 agent 看的指示）：
+   [$TODAY C${CYCLE}][秘書長→全隊] 第${CYCLE}輪結束：通過率${THIS_RATE}%。失敗原因：[診斷]。下輪全隊注意：[具體指示]
+
+5. 如果通過率 < 60% 或出現連續失敗，寫入 .team-memory/issues.md（建立檔案若不存在）：
+   [$TODAY C${CYCLE}] 警報：通過率${THIS_RATE}%，需要老闆決策：[一句問題描述]
+
+6. $([ $((CYCLE % 3)) -eq 0 ] && echo "執行：bash .claude/hooks/telegram-notify.sh '📊 第${CYCLE}/10輪診斷｜通過率${THIS_RATE}%｜${FAIL_LOG:0:30}'" || echo "本輪跳過 Telegram")
+
+7. 輸出：BATCH_G_DONE:C${CYCLE} RATE:${THIS_RATE}% DIAGNOSIS:[一句核心發現]
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 6 2>"$_TMP_G")
 
   if echo "$BATCH_G_RESULT" | grep -q "BATCH_G_DONE"; then
     RATE=$(echo "$BATCH_G_RESULT" | grep -o "RATE:[0-9]*%" | head -1)
+    DIAG=$(echo "$BATCH_G_RESULT" | grep -o "DIAGNOSIS:.*" | head -1 | cut -d: -f2-)
     echo "$BATCH_G_RESULT" | grep "【秘書長" | head -2 | sed 's/^/  │  /'
-    echo "  └─ ✅ Batch G 完成 | ${RATE}"
+    echo "  └─ ✅ Batch G 完成 | ${RATE} | 診斷：${DIAG:-（見成長記錄）}"
     TOTAL_PASS=$((TOTAL_PASS + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   else
-    echo "  └─ ❌ Batch G 失敗"
+    _ERR=$(cat "$_TMP_G" 2>/dev/null | tail -3 | tr '\n' ' ')
+    echo "  └─ ❌ Batch G 失敗：${_ERR:-（秘書長無回應）}"
     TOTAL_FAIL=$((TOTAL_FAIL + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   fi
+  rm -f "$_TMP_G"
 
   # ── 更新進度檔 ──
   python3 -c "
