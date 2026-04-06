@@ -55,5 +55,7 @@
 - 關鍵字：TSL2561, auto exposure, lux
 - 備註：三數字規格（0.1-40k lux / 3積分時間），「Auto Exposure」置於核心，Real-Time Adaptive暗示應用場景，符合Reddit熱門模式
 [2026-04-06 C5] SEO：TSL2561 光照度自動曝光控制 | 最佳標題:TSL2561 Auto Exposure with Arduino - 0.1-40k Lux, 3 Integration Times, Real-Time Adaptive | 關鍵字:TSL2561, auto exposure
+[2026-04-06 C6] SEO：MCP4725 DAC 類比輸出波形生成 | 最佳標題:MCP4725 DAC with Arduino - 12-bit/4096 Steps True Analog Output vs PWM | 關鍵字:MCP4725, DAC
 [2026-04-06 C2] SEO：HMC5883L 磁力計三軸方位計算 | 最佳標題:HMC5883L 3-Axis Compass with 1.5° Heading Accuracy - Arduino Tutorial | 選擇理由:包含具體型號、1.5°精度數字，符合Reddit標題模式（Device+specific result+context），適合r/arduino受眾
 [2026-04-06 C3] SEO：ADXL345 衝擊偵測靈敏度設定 | 最佳標題:ADXL345 Interrupt Mode: 62.5 mg Resolution, 16g Range, 90% Power Save | 選擇理由:三數字並列建立專業權威感，interrupt 省電優勢置於前半段，符合 Reddit Device+Specific Result+Context 熱門模式
+[2026-04-06 C4] SEO：INA219 電流功率精準監測 | 最佳標題:INA219 Current Sensor: 32V/3.2A Range, 1% Accuracy, Real-Time Power Monitoring | 選擇理由:三數字並列（32V/3.2A/1% accuracy）建立專業權威感，Real-Time Power Monitoring 強調核心價值，符合Reddit Device+Specific Result+Context 熱門模式，類似歷史成功案例（ADXL345/SHT31）

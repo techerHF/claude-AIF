@@ -1,1 +1,1 @@
-{"cycle": 5, "total_done": 70, "pass": 33, "fail": 37, "status": "running", "topic": "TSL2561 光照度自動曝光控制", "msg_count": 0}
+{"cycle": 6, "total_done": 84, "pass": 44, "fail": 40, "status": "running", "topic": "MCP4725 DAC 類比輸出波形生成", "msg_count": 0}

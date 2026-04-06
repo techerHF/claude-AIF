@@ -32,3 +32,6 @@
 [2026-04-06 C4] 發布：INA219 電流功率精準監測 | 審查:APPROVED | Reddit+devto草稿完成
 
 [2026-04-06 C5] 發布：TSL2561 光照度自動曝光控制 | 審查:APPROVED | Reddit+devto草稿完成
+
+[2026-04-06 C6] 發布：MCP4725 DAC 類比輸出波形生成 | 審查:APPROVED | Reddit+devto草稿完成
+[2026-04-06 C4] 發布：INA219 電流功率精準監測 | 審查:APPROVED | SEO採納:是 | 和上次差異:直接使用SEO標題
