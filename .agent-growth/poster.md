@@ -30,3 +30,5 @@
 [2026-04-06 C3] 發布：ADXL345 衝擊偵測靈敏度設定 | 審查:APPROVED | Reddit+devto草稿完成
 
 [2026-04-06 C4] 發布：INA219 電流功率精準監測 | 審查:APPROVED | Reddit+devto草稿完成
+
+[2026-04-06 C5] 發布：TSL2561 光照度自動曝光控制 | 審查:APPROVED | Reddit+devto草稿完成

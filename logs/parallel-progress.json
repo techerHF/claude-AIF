@@ -1,1 +1,1 @@
-{"cycle": 4, "total_done": 56, "pass": 28, "fail": 28, "status": "running", "topic": "INA219 電流功率精準監測", "msg_count": 0}
+{"cycle": 3, "total_done": 42, "pass": 20, "fail": 22, "status": "running", "topic": "ADXL345 衝擊偵測靈敏度設定", "msg_count": 0}

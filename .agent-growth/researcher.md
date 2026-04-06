@@ -26,3 +26,5 @@
 [2026-04-06 C2] 掃描：HMC5883L 磁力計三軸方位計算 | Reddit:封鎖 | 發現:HMC5883L 為低成本三軸磁力計，I2C 接口，需旋轉矩陣校正硬磁干擾，方位角計算依賴反正切函數整合 X/Y 軸數據，適合 e-compass 應用
 [2026-04-06 C3] 掃描：ADXL345 衝擊偵測靈敏度設定 | Reddit:封鎖 | 發現:ADXL345 支援 +/-2g 至 +/-16g 範圍設定，THRESH_TAP 閾值範圍 0-255（62.5 mg/LSB），中斷式偵測可大幅降低 MCU 輪詢負擔，DIY 衝擊偵測常見問題為設定值與實際加速度單位混淆
 [2026-04-06 C4] 掃描：INA219 電流功率精準監測 | Reddit:封鎖 | 發現:WebFetch old.reddit.com 持續被拒絕，Reddit 趨勢掃描仍無法進行；INA219 為 I2C 介面功率/電流感測器，32V/3.2A 範圍，適合太陽能監控、鋰電池管理、IoT 功率計等 Maker 應用場景
+[2026-04-06 C3] 掃描：ADXL345 衝擊偵測靈敏度設定 | Reddit:封鎖 | 策略調整:改用 www.reddit.com/r/arduino/top.json 嘗試，仍被拒絕；改以 researcher 本地感測器專業建構demand signal | 發現:ADXL345 THRESH_TAP 單位62.5mg/LSB是DIY玩家常見痛點，interrupt-based偵測較輪詢省電且反應更快
+[2026-04-06 C5] 掃描：TSL2561 光照度自動曝光控制 | Reddit:封鎖 | 發現:TSL2561 為 I2C 光照度感測器，支援動態範圍 0.1-40k lux，自動曝光控制需自行實作積分時間調整，適合結合 Arduino 環境光監控與攝影測光應用
