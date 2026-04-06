@@ -69,3 +69,4 @@
 - 關鍵字：MAX6675, cold junction compensation, K-type thermocouple
 - 備註：三數字規格（0.25°C / 0-1024°C / SPI），cold junction compensation 置於結尾強調差異化，符合 Reddit Device+Specific Result+Context 熱門模式
 [2026-04-06 C5] SEO：TSL2561 光照度自動曝光控制 | 最佳標題:TSL2561 Auto Exposure: 0.1-40k Lux, 3 Integration Times (13.7/101/402ms) - Arduino | 選擇理由:三數字並列（0.1-40k Lux, 13.7/101/402ms）建立專業權威感，Auto Exposure 置於前半段凸顯核心功能，符合 Reddit Device+Specific Result+Context 熱門模式
+[2026-04-06 C6] SEO：MCP4725 DAC 類比輸出波形生成 | 最佳標題:MCP4725 12-bit DAC: 4096 Levels, 0-5V Output, Arduino Waveform Generation | 選擇理由:三數字並列（12-bit/4096 Levels/0-5V）建立專業權威感，Arduino Waveform Generation 強調應用價值
