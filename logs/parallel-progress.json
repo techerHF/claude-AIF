@@ -1,1 +1,1 @@
-{"cycle": 3, "total_done": 42, "pass": 20, "fail": 22, "status": "running", "topic": "ADXL345 衝擊偵測靈敏度設定", "msg_count": 0}
+{"cycle": 5, "total_done": 70, "pass": 33, "fail": 37, "status": "running", "topic": "TSL2561 光照度自動曝光控制", "msg_count": 0}
