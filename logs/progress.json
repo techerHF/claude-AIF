@@ -36,5 +36,11 @@
     "timestamp": "2026-04-06T06:48:11",
     "title": "INA219 電流功率精準監測",
     "status": "reviewed"
+  },
+  {
+    "date": "2026-04-06",
+    "timestamp": "2026-04-06T07:28:24",
+    "title": "MAX6675 熱電偶高溫量測補償",
+    "status": "reviewed"
   }
 ]

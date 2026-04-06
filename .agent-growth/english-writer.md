@@ -31,3 +31,5 @@
 | 2026-04-06 C5 | 英文版 | TSL2561 光照度自動曝光控制 | 309 | conversational | Reddit r/arduino 版，TSL2561 vs LDR 差異化，5環境測試數據 |
 | 2026-04-06 C3 | 英文版 | ADXL345 衝擊偵測靈敏度設定 | 265 | conversational | 縮短至300字，側重 interrupt-based 省電差異化（140μA vs 18μA，7x），適合 Reddit r/arduino 受眾 |
 | 2026-04-06 C6 | 英文版 | MCP4725 DAC 類比輸出波形生成 | 380 | conversational | Reddit r/arduino 版，強調與 PWM 差異（真實 DAC 輸出、無需低-pass filter），含 I2C 瓶頸說明與波形查表實作 |
+| 2026-04-06 C7 | 英文版 | MAX6675 熱電偶高溫量測補償 | 300 | conversational | Reddit r/arduino 版，冷端補償原理、1024°C 範圍、SPI 介面 vs raw ADC 電壓差異化，含完整程式碼 |
+| 2026-04-06 C5 | 英文版 | TSL2561 光照度自動曝光控制 | 848 | technical | Reddit r/arduino 版，600-900字（不含程式碼），手動積分時間控制戶外測光表差異化，13ms/101ms/402ms 三段整合 |

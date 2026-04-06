@@ -26,4 +26,6 @@
 [2026-04-06 C2] 審查：HMC5883L 磁力計三軸方位計算 | REJECTED | 主要問題:accX*0.1物理單位錯誤（角度被當成角速度）+yaw更新未用磁力計修正+字數不足655/800 | 給writer建議:需新增readGyro()讀原始陀螺儀+將yaw更新改用磁力計算出的方位角+補充內容至800字以上
 [2026-04-06 C4] 審查：INA219 電流功率精準監測 | REJECTED | 主要問題:文章未回應作者自身提出的不確定點（1.0A上限對μA級休眠電流的適用性）；12-bit ADC在1A範圍LSB≈244μA根本測不到μA sleep current，亦無sleep mode漂移討論 | 給writer建議:在setCalibration段落加註1.0A範圍最小刻度244μA不適合測μA sleep，並說明IoT sleep供電測量建議另選低電流感測方案
 [2026-04-06 C5] 審查：TSL2561 光照度自動曝光控制 | REJECTED | 主要問題:材料封裝TSSOP-5資訊錯誤（實為CN-41）+驗證步驟無實測數值+saturation門檻60000/1000未說明依據 | 給writer建議:將TSL2561封裝改為CN-41，步驟4加入實測lux數值，並說明saturation偵測門檻的選擇邏輯
+[2026-04-06 C5 Batch D] 審查：TSL2561 光照度自動曝光控制（重審） | APPROVED | 主要問題:N/A | 給writer建議:101ms積分時間的 saturation 行為建議在文章中補充說明，以對應「切換空白區間」的不確定性
 [2026-04-06 C6] 審查：MCP4725 DAC 類比輸出波形生成 | REJECTED | 主要問題:含程式碼總字數6767超標（上限5000）+setVoltage第二參數說明錯誤（writeEEPROM旗標被誤說為參考電壓選擇） | 給writer建議:精簡至5000字以內+修正setVoltage第二參數為writeEEPROM旗標說明+移除line61「請至Adafruit library取得完整範例」的依賴外部引用做法
+[2026-04-06 C7] 審查：MAX6675 熱電偶高溫量測補償 | REJECTED | 主要問題:純文字字數716未達800字下限+冷接點補償原理「反向補償電壓」說法不精確（實為量測冷端溫度後數學轉換） | 給writer建議:補充Seebeck係數41μV/°C與MAX6675內部冷端感測器機制說明，並將「反向補償電壓」改為「等效熱電勢相加」
