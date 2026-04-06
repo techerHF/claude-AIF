@@ -540,7 +540,8 @@ body{display:flex;flex-direction:column;}
 
 /* TOPBAR */
 .topbar{display:flex;align-items:center;height:48px;padding:0 16px;
-  background:var(--bg1);border-bottom:1px solid var(--b0);flex-shrink:0;gap:10px;}
+  background:var(--bg1);border-bottom:1px solid var(--b0);flex-shrink:0;gap:10px;position:relative;overflow:hidden;}
+#tb-bar{position:absolute;bottom:0;left:0;height:2px;width:100%;background:var(--brand);transition:width 1s linear;pointer-events:none;}
 .logo{font-size:12px;font-weight:700;color:var(--brand);letter-spacing:.05em;white-space:nowrap;}
 .logo-v{font-size:9px;color:var(--t2);font-weight:400;margin-left:3px;}
 .mode-tabs{display:flex;gap:2px;flex:1;}
@@ -674,12 +675,12 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .table-label{position:relative;z-index:1;font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.12em;text-transform:uppercase;}
 .table-status{position:relative;z-index:1;font-size:22px;font-weight:800;color:var(--t0);letter-spacing:.02em;}
 .table-divider{position:relative;z-index:1;width:42px;height:1px;background:var(--b0);}
-.table-topic{position:relative;z-index:1;font-size:12px;color:var(--t1);max-width:220px;line-height:1.55;}
+.table-topic{position:relative;z-index:1;font-size:12px;color:var(--t1);width:100%;line-height:1.55;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
 .table-note{position:relative;z-index:1;font-size:10px;color:var(--t2);}
 .team-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex-shrink:0;}
 .tbs{padding:10px 12px;border:1px solid var(--b0);border-radius:12px;background:rgba(255,255,255,.48);font-size:11px;color:var(--t1);display:flex;flex-direction:column;gap:4px;}
 .tbs span{font-size:18px;line-height:1;font-weight:800;color:var(--t0);}
-.tbs.ok span{color:var(--ok);} .tbs.wait span{color:var(--wait);} .tbs.err span{color:var(--brand);}
+.tbs.ok span{color:var(--ok);} .tbs.wait span{color:var(--wait);} .tbs.brand span{color:var(--brand);}
 /* PIPELINE STRIP */
 .pipe-strip{padding:12px 16px 12px;border-top:1px solid var(--b0);flex-shrink:0;}
 .pipe-strip-hd{font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.1em;
@@ -748,7 +749,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
   font-size:10px;color:var(--t1);cursor:pointer;border-radius:4px;
   font-family:inherit;transition:all .12s;}
 .log-tab.active{background:var(--brand-bg);color:var(--brand);border-color:var(--brand);}
-.log-display{flex:1;overflow-y:auto;padding:0 14px;font-size:9.5px;
+.log-display{flex:1;overflow-y:auto;padding:0 14px;font-size:11px;
   font-family:ui-monospace,monospace;line-height:1.7;}
 .log-line{border-bottom:1px solid var(--b0);padding:1px 0;color:var(--t1);}
 .log-line.ok{color:var(--ok);}
@@ -845,10 +846,11 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .sk-x{background:var(--bg2);color:var(--t2);}
 .hk{background:var(--ok-bg);color:var(--ok);}
 .hk-x{background:var(--err-bg);color:var(--err);}
-.back-btn{margin:12px;background:none;border:1px solid var(--b0);color:var(--t1);
+.back-btn{margin:8px 12px 4px;background:none;border:1px solid var(--b0);color:var(--t1);
   padding:5px 10px;border-radius:4px;cursor:pointer;font-size:10px;
   font-family:inherit;transition:all .12s;flex-shrink:0;}
 .back-btn:hover{border-color:var(--brand);color:var(--brand);}
+#ad-inner{flex:1;overflow-y:auto;}
 
 /* ALERT */
 .alert-ov{position:fixed;inset:0;background:rgba(44,40,37,.4);
@@ -887,10 +889,10 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <span class="stxt" id="stxt">待命</span>
     </div>
     <span class="tb-ts" id="ts">--</span>
-    <span class="tb-ts" id="tb-countdown" style="min-width:28px;text-align:right;color:var(--t2)">5s</span>
     <button class="tb-btn" onclick="triggerRun()">▶ 執行</button>
     <button class="tb-btn" onclick="triggerStop()">⏹ 停止</button>
   </div>
+  <div id="tb-bar"></div>
 </nav>
 
 <!-- WORKSPACE -->
@@ -1023,7 +1025,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
           <div class="tbs ok" id="tb-working">工作中 <span>0</span></div>
           <div class="tbs wait" id="tb-waiting">等待中 <span>0</span></div>
           <div class="tbs" id="tb-idle">休息中 <span>11</span></div>
-          <div class="tbs err">已選取 <span id="tb-selected">無</span></div>
+          <div class="tbs brand">已選取 <span id="tb-selected">無</span></div>
         </div>
       </div>
     </div>
@@ -1052,7 +1054,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
         </div>
         <div class="content-preview">
           <div class="preview-hd" id="preview-hd">選擇文章預覽</div>
-          <pre id="preview-body" class="preview-body">—</pre>
+          <div id="preview-body" class="preview-body">—</div>
           <div class="preview-foot">
             <span id="preview-words" style="font-size:9px;color:var(--t2)"></span>
             <button id="devto-btn" class="devto-btn" onclick="postToDevto()" disabled>→ dev.to 草稿</button>
@@ -1081,13 +1083,9 @@ body[data-mode="control"]    .mode-control{display:flex;}
     <div class="mode-panel mode-control">
       <div class="ctrl-wrap">
         <div class="ctrl-section">
-          <div class="ctrl-hd">執行控制</div>
-          <div class="ctrl-btns">
-            <button class="ctrl-run" onclick="triggerRun()">▶ 立即執行</button>
-            <button class="ctrl-stop" onclick="triggerStop()">⏹ 停止</button>
-          </div>
+          <div class="ctrl-hd">強制主題</div>
           <div class="ctrl-topic">
-            <input id="topic-input" class="topic-inp" placeholder="強制主題（選填）"/>
+            <input id="topic-input" class="topic-inp" placeholder="輸入主題後套用，會發送到控制對話"/>
             <button class="topic-btn" onclick="triggerTopic()">套用</button>
           </div>
         </div>
@@ -1116,8 +1114,8 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <div id="feed-items"></div>
     </div>
     <div id="agent-detail">
-      <div id="ad-inner"></div>
       <button class="back-btn" onclick="deselectAgent()">← 返回動態</button>
+      <div id="ad-inner"></div>
     </div>
   </aside>
 
@@ -1186,7 +1184,7 @@ function updateWorkstations(data){
   if(ts)ts.textContent=stateText;
   const stateChip=document.getElementById('overview-state-chip'); if(stateChip) stateChip.textContent=stateText;
   const pipe=data.pipeline||{};
-  const topicText=(pipe.article&&pipe.article.title)?pipe.article.title.slice(0,22):'等待任務';
+  const topicText=(pipe.article&&pipe.article.title)?pipe.article.title:'等待任務';
   const tt=document.getElementById('table-topic');
   if(tt)tt.textContent=topicText;
   const topicChip=document.getElementById('overview-topic-chip'); if(topicChip) topicChip.textContent=topicText;
@@ -1407,7 +1405,7 @@ function renderArticles(data){
   const al=document.getElementById('arts-list');if(!al)return;
   al.innerHTML=arts.map(a=>
     '<div class="art-item" data-name="'+esc(a.name)+'" onclick="openArticle(\''+esc(a.name)+'\')">'+
-    '<span class="art-title">'+esc(a.title)+'</span>'+
+    '<span class="art-title" title="'+esc(a.title)+'">'+esc(a.title)+'</span>'+
     '<span class="art-w">'+a.words+' 字</span></div>'
   ).join('')||'<div style="padding:14px 12px;color:var(--t2);font-size:9.5px">尚無文章</div>';
 }
@@ -1463,11 +1461,32 @@ async function triggerStop(){
     setTimeout(closeAlert,2000);
   }catch(e){alert('無法連接 API');}
 }
+async function sendChatDirect(msg){
+  const msgs=document.getElementById('chat-msgs');if(!msgs)return;
+  msgs.insertAdjacentHTML('beforeend','<div class="cm user">'+esc(msg)+'</div>');
+  msgs.scrollTop=msgs.scrollHeight;
+  const typing=document.getElementById('chat-typing');if(typing)typing.style.display='block';
+  const btn=document.getElementById('chat-btn');if(btn)btn.disabled=true;
+  try{
+    const ctrl=new AbortController();const tid=setTimeout(()=>ctrl.abort(),15000);
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg}),signal:ctrl.signal});
+    clearTimeout(tid);
+    const d=await r.json();
+    msgs.insertAdjacentHTML('beforeend','<div class="cm ai">'+esc(d.reply||d.error||'（無回應）')+'</div>');
+  }catch(e){
+    msgs.insertAdjacentHTML('beforeend','<div class="cm ai">'+(e.name==='AbortError'?'⏱ 請求逾時':'❌ 無法連線')+'</div>');
+  }
+  if(btn)btn.disabled=false;
+  if(typing)typing.style.display='none';
+  msgs.scrollTop=msgs.scrollHeight;
+}
 function triggerTopic(){
   const t=document.getElementById('topic-input');if(!t)return;
   const v=t.value.trim();if(!v)return;
-  const ci=document.getElementById('chat-in');if(ci)ci.value='強制執行今日主題：'+v;
-  setMode('control',null);sendChat();
+  t.value='';
+  setMode('control',null);
+  sendChatDirect('強制執行今日主題：'+v);
 }
 
 /* ARTICLE PREVIEW */
@@ -1483,7 +1502,7 @@ async function openArticle(name){
     const r=await fetch('/api/article/'+encodeURIComponent(name));
     const d=await r.json();
     if(pb)pb.textContent=d.content||'（無內容）';
-    if(pw)pw.textContent=(d.content||'').split(/\s+/).filter(w=>w.length>0).length+' 詞';
+    if(pw)pw.textContent=(d.content||'').length+' 字';
   }catch(e){if(pb)pb.textContent='載入失敗';}
 }
 async function postToDevto(){
@@ -1530,8 +1549,8 @@ async function sendChat(){
 function startTimer(){
   timer=setInterval(()=>{
     countdown--;
-    const cd=document.getElementById('tb-countdown');
-    if(cd)cd.textContent=countdown>0?countdown+'s':'...';
+    const bar=document.getElementById('tb-bar');
+    if(bar)bar.style.width=(countdown/5*100)+'%';
     if(countdown<=0){fetchNow();countdown=5;}
   },1000);
 }
