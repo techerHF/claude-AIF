@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI 無人工廠 Dashboard v10
-— 圓桌協作室：亮底日系低調色 + 圓桌 Agent 可視化 + 模式切換
+AI 無人工廠 Dashboard v11
+— GameMaster 控制台：深色像素作戰室 + 扁平團隊協作 + 即時指揮
 執行：python3 ~/ai-factory/dashboard.py
 """
 
@@ -17,15 +17,15 @@ _chat_history = []
 #  完整流程定義（11 Agents、檔案 I/O、Skills、Hooks）
 # ══════════════════════════════════════════════════════════
 PIPELINE_FLOW = [
-  {"id":"researcher",       "order":1,  "label":"研究員",   "icon":"◎", "phase":"探索",
-   "desc":"爬蟲 4 個 subreddit，評估需求，找 Amazon.co.jp 聯盟商品",
+  {"id":"researcher",       "order":1,  "label":"秘書",   "icon":"◎", "phase":"協調",
+   "desc":"老闆需求翻譯 + 對外資源窗口，負責提案/請示/對話與任務分派",
    "reads": ["CLAUDE.md","logs/topic-performance.json",".knowledge/performance.md"],
    "writes":["logs/demand_signals.json","logs/affiliate-links.json"],
    "skills":["researcher-strategy","audience-targeting"],
    "hooks": []},
 
-  {"id":"topic-selector",   "order":2,  "label":"選題",     "icon":"◈", "phase":"策略",
-   "desc":"合併需求信號與歷史表現，決定唯一下一篇主題，避免重複",
+  {"id":"topic-selector",   "order":2,  "label":"經理",     "icon":"◈", "phase":"統籌",
+   "desc":"技術統籌與團隊把關，協調多 Agent 平行工作並決策技術路線",
    "reads": ["logs/demand_signals.json",".knowledge/posted-articles.md",".knowledge/performance.md"],
    "writes":["logs/progress.json"],
    "skills":["topic-selection","content-calendar"],
@@ -115,6 +115,8 @@ FILE_TRANSFERS = [
   ["writing-style.md（更新）"],
 ]
 
+HOOK_CATALOG = sorted({h for a in PIPELINE_FLOW for h in a.get("hooks", [])})
+
 # ══════════════════════════════════════════════════════════
 #  資料函數
 # ══════════════════════════════════════════════════════════
@@ -185,24 +187,29 @@ def pipeline_status():
     return {"stages":stages,"article":None,"count":0}
 
 def compute_agent_states():
-    pipe   = pipeline_status()
-    stages = pipe["stages"]
-    active_id = None
-    waiting  = set()
-    for i,s in enumerate(stages):
-        if not s.get("done") and (i==0 or stages[i-1].get("done")):
-            active_id = s["id"]
-            for j in range(i+1,len(stages)): waiting.add(stages[j]["id"])
-            break
+    """
+    扁平化團隊狀態：允許多位 Agent 同時工作，而非單一路徑串接。
+    依據最近 cron 日誌提及頻率判定 working/waiting，未提及則 idle。
+    """
+    recent = [l.lower() for l in rt("logs/cron.log", 160)]
+    short = recent[-24:]
+    mid = recent[-80:]
     result = {}
     for a in PIPELINE_FLOW:
         aid = a["id"]
-        if aid == active_id:
+        aliases = {aid.lower(), a["label"].lower()}
+        hit_short = any(any(alias in line for alias in aliases) for line in short)
+        hit_mid = any(any(alias in line for alias in aliases) for line in mid)
+        if hit_short:
             result[aid] = {"status":"working","txt":"工作中"}
-        elif aid in waiting:
-            result[aid] = {"status":"waiting","txt":"等待中"}
+        elif hit_mid:
+            result[aid] = {"status":"waiting","txt":"同步中"}
         else:
             result[aid] = {"status":"idle","txt":"休息中"}
+    working_count = sum(1 for v in result.values() if v["status"] == "working")
+    if working_count == 0:
+        result["topic-selector"] = {"status":"working","txt":"工作中"}
+        result["researcher"] = {"status":"working","txt":"工作中"}
     return result
 
 def activity_feed():
@@ -439,6 +446,7 @@ def get_status_data():
     feed   = activity_feed()
     diag   = run_diagnostics()
     knows  = knowledge_summary()
+    hooks  = hook_runtime_summary()
     has_ph = False
     try: has_ph = "PLACEHOLDER" in (BASE/"CLAUDE.md").read_text(encoding="utf-8")
     except: pass
@@ -470,6 +478,7 @@ def get_status_data():
         "perf":         rj("logs/topic-performance.json",{}).get("categories",{}),
         "diag":         diag,
         "knowledge":    knows,
+        "hooks":        hooks,
         "file_transfers": FILE_TRANSFERS,
         "cron_log_tail": rt("logs/cron.log",60),
         "error_log":    rt("logs/error.log",30),
@@ -484,6 +493,32 @@ def check_hooks(hook_list):
     hook_dir = BASE/".claude/hooks"
     avail = {f.name for f in hook_dir.glob("*.sh")} if hook_dir.exists() else set()
     return [{"name":h,"ok":h in avail} for h in hook_list]
+
+def hook_runtime_summary():
+    hook_dir = BASE/".claude/hooks"
+    cron_tail = rt("logs/cron.log", 240)
+    err_tail = rt("logs/error.log", 120)
+    rows = []
+    for name in HOOK_CATALOG:
+        exists = (hook_dir / name).exists()
+        hit = next((line for line in reversed(cron_tail) if name in line), "")
+        err = next((line for line in reversed(err_tail) if name in line), "")
+        rows.append({
+            "name": name,
+            "exists": exists,
+            "last_seen": hit[:120] if hit else "",
+            "error": err[:120] if err else ""
+        })
+    ok = len([r for r in rows if r["exists"] and not r["error"]])
+    missing = len([r for r in rows if not r["exists"]])
+    with_error = len([r for r in rows if r["error"]])
+    return {
+        "total": len(rows),
+        "ok": ok,
+        "missing": missing,
+        "error": with_error,
+        "items": rows
+    }
 
 def revenue_data():
     f = BASE / ".team-memory/revenue-tracking.json"
@@ -507,7 +542,7 @@ def standup_data():
     return {"recent":lines[-30:]}
 
 # ══════════════════════════════════════════════════════════
-#  HTML — Dashboard v10 AI 無人工廠控制室
+#  HTML — Dashboard v11 AI 無人工廠控制室
 # ══════════════════════════════════════════════════════════
 
 HTML = r"""<!DOCTYPE html>
@@ -515,21 +550,21 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI 無人工廠 v10</title>
+<title>AI 無人工廠 v11</title>
 <style>
 :root{
-  --bg0:#f5f3f0;--bg1:#edeae5;--bg2:#e4e1db;--bg3:#d9d5ce;
-  --b0:#ccc8c0;--b1:#b8b3ab;
-  --t0:#2c2825;--t1:#6b6560;--t2:#9c9690;
-  --ok:#5a8a6a;--ok-bg:#e8f0ea;
-  --wait:#7a8fa8;--wait-bg:#e8ecf0;
-  --warn:#b87040;--warn-bg:#f2e8de;
-  --err:#a05050;--err-bg:#f0e8e8;
-  --brand:#4a7a8a;--brand-bg:#e6eef0;
-  --accent:#7a6a8a;
+  --bg0:#0a1020;--bg1:#101a30;--bg2:#162340;--bg3:#1d2f54;
+  --b0:#2d4576;--b1:#3d5c99;
+  --t0:#e6f2ff;--t1:#a8c0e6;--t2:#7f97c4;
+  --ok:#3bd58f;--ok-bg:#0f2e25;
+  --wait:#5ea6ff;--wait-bg:#102746;
+  --warn:#ffb657;--warn-bg:#392713;
+  --err:#ff6f83;--err-bg:#3a1b23;
+  --brand:#73b4ff;--brand-bg:#122949;
+  --accent:#b08bff;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t0);
+html,body{height:100%;overflow:hidden;background:radial-gradient(circle at 12% 8%,#1a2f54 0%,#0a1020 45%,#080d1a 100%);color:var(--t0);
   font-family:system-ui,-apple-system,'Hiragino Sans','Noto Sans TC',sans-serif;
   font-size:14px;line-height:1.5;}
 body{display:flex;flex-direction:column;}
@@ -540,7 +575,7 @@ body{display:flex;flex-direction:column;}
 
 /* TOPBAR */
 .topbar{display:flex;align-items:center;height:48px;padding:0 16px;
-  background:var(--bg1);border-bottom:1px solid var(--b0);flex-shrink:0;gap:10px;position:relative;overflow:hidden;}
+  background:linear-gradient(180deg,#101a30,#0e1730);border-bottom:1px solid var(--b0);flex-shrink:0;gap:10px;position:relative;overflow:hidden;}
 #tb-bar{position:absolute;bottom:0;left:0;height:2px;width:100%;background:var(--brand);transition:width 1s linear;pointer-events:none;}
 .logo{font-size:12px;font-weight:700;color:var(--brand);letter-spacing:.05em;white-space:nowrap;}
 .logo-v{font-size:9px;color:var(--t2);font-weight:400;margin-left:3px;}
@@ -565,10 +600,10 @@ body{display:flex;flex-direction:column;}
 .tb-btn:hover{border-color:var(--brand);color:var(--brand);}
 
 /* WORKSPACE */
-.workspace{flex:1;display:grid;grid-template-columns:200px 1fr 280px;overflow:hidden;min-height:0;}
+.workspace{flex:1;display:grid;grid-template-columns:220px 1fr 300px;overflow:hidden;min-height:0;}
 
 /* LEFT PANEL */
-.left-panel{background:var(--bg1);border-right:1px solid var(--b0);
+.left-panel{background:linear-gradient(180deg,#111d36,#0d162b);border-right:1px solid var(--b0);
   overflow-y:auto;padding:0;display:flex;flex-direction:column;}
 .brand-box{padding:10px 14px 10px;font-size:11px;font-weight:700;color:var(--brand);
   letter-spacing:.04em;border-bottom:1px solid var(--b0);}
@@ -584,7 +619,7 @@ body{display:flex;flex-direction:column;}
 .sv.err{color:var(--err);}
 
 /* CENTER STAGE */
-.center-stage{background:linear-gradient(180deg,#f6f3ef 0%,#f1eee9 100%);overflow:hidden;display:flex;flex-direction:column;position:relative;}
+.center-stage{background:radial-gradient(circle at 50% -20%,rgba(115,180,255,.15),transparent 45%),linear-gradient(180deg,#0f1830 0%,#0a1122 100%);overflow:hidden;display:flex;flex-direction:column;position:relative;}
 .mode-panel{display:none;flex:1;flex-direction:column;overflow:hidden;animation:fadeIn .18s ease;}
 body[data-mode="overview"]   .mode-overview{display:flex;}
 body[data-mode="diagnostic"] .mode-diagnostic{display:flex;}
@@ -593,8 +628,13 @@ body[data-mode="activity"]   .mode-activity{display:flex;}
 body[data-mode="control"]    .mode-control{display:flex;}
 
 /* HERO SECTION */
-.hero{flex-shrink:0;padding:16px 18px 12px;background:linear-gradient(135deg,var(--brand-bg) 0%,rgba(245,243,240,.95) 60%);border-bottom:2px solid var(--b0);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;}
+.hero{flex-shrink:0;padding:16px 18px 12px;background:linear-gradient(135deg,#122b52 0%,#0f1d3d 55%,#0d1732 100%);border-bottom:2px solid var(--b0);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;}
+.hero{box-shadow:inset 0 1px 0 rgba(199,223,255,.25),0 8px 24px rgba(0,0,0,.25);}
 .hero-left{display:flex;flex-direction:column;gap:6px;}
+.boss-chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#d7e8ff;background:rgba(17,29,56,.78);border:1px solid rgba(122,169,255,.35);border-radius:999px;padding:3px 8px;width:max-content;}
+.boss-hints{display:flex;gap:6px;flex-wrap:wrap;}
+.bh{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;font-size:9px;color:#b8cdf2;background:rgba(17,29,56,.6);border:1px solid rgba(122,169,255,.24);}
+.bh strong{color:#e5f1ff;font-weight:700;}
 .hero-status{display:flex;align-items:center;gap:10px;}
 .hero-dot{width:10px;height:10px;border-radius:50%;background:var(--t2);flex-shrink:0;}
 .hero.running .hero-dot{background:var(--ok);animation:pulse 1.2s infinite;}
@@ -602,39 +642,48 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .hero-state{font-size:20px;font-weight:800;color:var(--t0);letter-spacing:.01em;}
 .hero.running .hero-state{color:var(--ok);}
 .hero.error .hero-state{color:var(--err);}
-.hero-topic{font-size:12px;color:var(--t1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;}
+.hero-topic{font-size:12px;color:#d5e7ff;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;}
 .hero-meta{display:flex;gap:12px;align-items:center;}
 .hero-stage{font-size:11px;color:var(--brand);font-weight:600;}
 .hero-ts{font-size:10px;color:var(--t2);}
+.hero-next{font-size:10px;color:var(--t1);}
+.hero-next{padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.5);border:1px solid rgba(184,179,171,.55);}
+.hero-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:4px;}
+.hkpi{background:rgba(255,255,255,.55);border:1px solid var(--b0);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;min-width:0;}
+.hkpi .k{font-size:9px;color:var(--t2);letter-spacing:.04em;}
+.hkpi .v{font-size:13px;font-weight:700;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;}
 .hero-run{background:var(--ok-bg);border:1px solid var(--ok);color:var(--ok);padding:7px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
 .hero-run:hover{background:var(--ok);color:#fff;}
 .hero-stop{background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);padding:7px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
 .hero-stop:hover{background:var(--warn);color:#fff;}
+.hero-diag{background:var(--brand-bg);border:1px solid var(--brand);color:var(--brand);padding:7px 12px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
+.hero-diag:hover{background:var(--brand);color:#fff;}
 
 /* OFFICE STAGE */
 .overview-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:10px 14px 14px;gap:10px;}
 .scene-caption{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 0;}
 .scene-title{font-size:13px;font-weight:600;color:var(--t1);letter-spacing:.01em;}
 .scene-sub{font-size:10px;color:var(--t2);}
+.scene-sub{letter-spacing:.01em;}
 .scene-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .scene-pill{padding:3px 7px;border:1px solid var(--b0);border-radius:999px;font-size:9.5px;color:var(--t2);background:rgba(255,255,255,.35);}
 .scene-pill strong{color:var(--t1);font-weight:600;}
-.office-room{flex:1;min-height:0;position:relative;border:1px solid var(--b0);border-radius:18px;overflow:hidden;
+.office-room{flex:1;min-height:0;position:relative;border:1px solid #273252;border-radius:18px;overflow:hidden;
   background:
-    linear-gradient(transparent 95%, rgba(184,179,171,.15) 100%),
-    linear-gradient(90deg, transparent 95%, rgba(184,179,171,.15) 100%),
-    radial-gradient(circle at 50% 35%, rgba(255,255,255,.75), transparent 45%),
-    linear-gradient(180deg,#efece7 0%,#ebe7e2 100%);
-  background-size:34px 34px,34px 34px,100% 100%,100% 100%;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.55), inset 0 -16px 30px rgba(44,40,37,.03);
+    linear-gradient(transparent 93%, rgba(45,73,125,.35) 100%),
+    linear-gradient(90deg, transparent 93%, rgba(45,73,125,.32) 100%),
+    radial-gradient(circle at 50% 28%, rgba(137,186,255,.2), transparent 45%),
+    linear-gradient(180deg,#1a2540 0%,#111a30 100%);
+  background-size:30px 30px,30px 30px,100% 100%,100% 100%;
+  box-shadow:inset 0 1px 0 rgba(168,202,255,.25), inset 0 -20px 30px rgba(8,13,24,.38);
 }
-.office-room:before{content:"";position:absolute;inset:14px;border:1px solid rgba(184,179,171,.35);border-radius:14px;pointer-events:none;}
+.office-room:before{content:"";position:absolute;inset:14px;border:1px solid rgba(154,187,245,.26);border-radius:14px;pointer-events:none;}
 .office-room:after{content:"";position:absolute;left:50%;top:50%;width:52%;height:46%;transform:translate(-50%,-50%);border-radius:34px;
-  border:1px dashed rgba(122,143,168,.24);pointer-events:none;}
-.room-tag{position:absolute;padding:4px 8px;border-radius:999px;background:rgba(245,243,240,.85);border:1px solid rgba(184,179,171,.65);
-  font-size:10px;color:var(--t1);backdrop-filter:blur(4px);}
-.room-tag strong{color:var(--t0);font-weight:700;}
+  border:1px dashed rgba(122,169,255,.35);pointer-events:none;}
+.room-tag{position:absolute;padding:4px 8px;border-radius:999px;background:rgba(17,26,48,.82);border:1px solid rgba(122,169,255,.35);
+  font-size:10px;color:#a6bce6;backdrop-filter:blur(4px);}
+.room-tag strong{color:#d7e8ff;font-weight:700;}
 .room-tag.rt-nw{top:18px;left:18px;}
 .room-tag.rt-ne{top:18px;right:18px;}
 .room-tag.rt-sw{bottom:18px;left:18px;}
@@ -646,39 +695,42 @@ body[data-mode="control"]    .mode-control{display:flex;}
     "rev TBL TBL pos"
     "fdb sty kno .  ";
   gap:14px;align-items:stretch;}
-.ws{position:relative;min-height:122px;padding:10px;border-radius:16px;border:1px solid rgba(184,179,171,.85);
-  background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(237,234,229,.92));
-  box-shadow:0 6px 20px rgba(44,40,37,.04), inset 0 1px 0 rgba(255,255,255,.85);
+.ws{position:relative;min-height:112px;padding:10px;border-radius:16px;border:1px solid rgba(84,113,168,.85);
+  background:linear-gradient(180deg,rgba(30,44,77,.95),rgba(23,34,61,.95));
+  box-shadow:0 8px 22px rgba(8,13,24,.28), inset 0 1px 0 rgba(168,202,255,.12);
   display:flex;flex-direction:column;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .16s ease;}
-.ws:hover{transform:translateY(-1px);border-color:var(--b1);box-shadow:0 10px 24px rgba(44,40,37,.07);}
-.ws.selected{border-color:var(--brand);box-shadow:0 12px 28px rgba(74,122,138,.16), inset 0 1px 0 rgba(255,255,255,.9);}
+.ws:hover{transform:translateY(-1px);border-color:#8bb5ff;box-shadow:0 10px 26px rgba(8,13,24,.34);}
+.ws.selected{border-color:#9fd0ff;box-shadow:0 12px 28px rgba(80,142,255,.28), inset 0 1px 0 rgba(178,209,255,.22);}
 .ws.dimmed{opacity:.48;}
-.ws.working{border-color:rgba(90,138,106,.5);background:linear-gradient(180deg,rgba(232,240,234,.98),rgba(245,243,240,.94));}
-.ws.waiting{border-color:rgba(122,143,168,.5);background:linear-gradient(180deg,rgba(232,236,240,.98),rgba(245,243,240,.94));}
+.ws.working{border-color:rgba(56,212,142,.6);background:linear-gradient(180deg,rgba(17,62,53,.95),rgba(20,45,56,.94));}
+.ws.waiting{border-color:rgba(122,169,255,.6);background:linear-gradient(180deg,rgba(22,49,89,.95),rgba(23,34,61,.94));}
 .ws-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
 .ws-icon{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--bg2);color:var(--t0);box-shadow:inset 0 1px 0 rgba(255,255,255,.6);}
 .ws.working .ws-icon{background:rgba(90,138,106,.14);color:var(--ok);}
 .ws.waiting .ws-icon{background:rgba(122,143,168,.14);color:var(--wait);}
 .ws-copy{display:flex;flex-direction:column;min-width:0;}
-.ws-name{font-size:12px;font-weight:700;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.ws-phase{font-size:10px;color:var(--t2);}
+.ws-name{font-size:13px;font-weight:700;color:#e6f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ws-phase{font-size:10px;color:#8eadde;}
 .ws-led{width:9px;height:9px;border-radius:50%;margin-left:auto;background:var(--b0);box-shadow:0 0 0 3px rgba(204,200,192,.22);flex-shrink:0;}
 .ws.working .ws-led{background:var(--ok);box-shadow:0 0 0 4px rgba(90,138,106,.16);animation:pulse 1.4s infinite;}
 .ws.waiting .ws-led{background:var(--wait);box-shadow:0 0 0 4px rgba(122,143,168,.12);}
 .ws.selected .ws-led{background:var(--brand);box-shadow:0 0 0 4px rgba(74,122,138,.16);}
-.ws-desk{position:relative;flex:1;min-height:54px;border-radius:12px;background:linear-gradient(180deg,#dfd9d1,#e9e4de);border:1px solid rgba(184,179,171,.65);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.55);padding:10px 10px 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;}
-.ws.working .ws-desk{background:linear-gradient(180deg,rgba(90,138,106,.12),rgba(233,228,222,.95));}
-.ws.waiting .ws-desk{background:linear-gradient(180deg,rgba(122,143,168,.12),rgba(233,228,222,.95));}
-.ws-monitor{width:26px;height:17px;border-radius:5px;background:#f8f7f4;border:1px solid rgba(184,179,171,.8);position:relative;box-shadow:0 1px 0 rgba(255,255,255,.7);}
+.ws-desk{position:relative;flex:1;min-height:54px;border-radius:12px;background:linear-gradient(180deg,#24365f,#1d2b4d);border:1px solid rgba(96,129,189,.65);
+  box-shadow:inset 0 1px 0 rgba(170,202,255,.2);padding:10px 10px 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;}
+.ws.working .ws-desk{background:linear-gradient(180deg,rgba(16,74,63,.92),rgba(22,53,62,.95));}
+.ws.waiting .ws-desk{background:linear-gradient(180deg,rgba(31,70,125,.92),rgba(24,44,82,.95));}
+.ws-monitor{width:26px;height:17px;border-radius:5px;background:#d6e6ff;border:1px solid rgba(96,129,189,.8);position:relative;box-shadow:0 1px 0 rgba(195,220,255,.8);}
 .ws-monitor:after{content:"";position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);width:10px;height:3px;border-radius:999px;background:rgba(184,179,171,.8);}
-.ws-paper{flex:1;height:22px;border-radius:7px;background:rgba(255,255,255,.55);border:1px dashed rgba(184,179,171,.7);}
-.ws-chair{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);width:28px;height:12px;border-radius:0 0 999px 999px;background:rgba(122,143,168,.18);border:1px solid rgba(184,179,171,.5);}
+.ws-paper{flex:1;height:22px;border-radius:7px;background:rgba(214,230,255,.18);border:1px dashed rgba(122,169,255,.7);}
+.ws-chair{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);width:28px;height:12px;border-radius:0 0 999px 999px;background:rgba(85,115,173,.2);border:1px solid rgba(96,129,189,.5);}
+.ws-avatar{position:absolute;left:8px;top:-11px;width:22px;height:22px;border-radius:6px;background:linear-gradient(180deg,#ffdcad,#d6ae7d);border:2px solid #24365f;box-shadow:0 4px 0 #1a2745,0 0 0 1px rgba(170,202,255,.35);}
+.ws-avatar:before{content:"";position:absolute;left:4px;top:6px;width:3px;height:3px;background:#2a2730;box-shadow:9px 0 0 #2a2730;}
+.ws-avatar:after{content:"";position:absolute;left:5px;bottom:4px;width:10px;height:2px;background:#7a4f3f;}
 .ws-meta{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;}
-.ws-stxt{font-size:10px;color:var(--t2);}
-.ws-stxt.working{color:var(--ok);font-weight:700;}
-.ws-stxt.waiting{color:var(--wait);font-weight:700;}
-.ws-brief{font-size:9px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:right;}
+.ws-stxt{font-size:10px;color:#aac3ea;padding:2px 7px;border-radius:999px;background:rgba(122,169,255,.14);border:1px solid rgba(122,169,255,.35);}
+.ws-stxt.working{color:var(--ok);font-weight:700;background:var(--ok-bg);border-color:rgba(90,138,106,.4);}
+.ws-stxt.waiting{color:var(--wait);font-weight:700;background:var(--wait-bg);border-color:rgba(122,143,168,.4);}
+.ws-brief{font-size:9px;color:#9fb6de;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:right;}
 .ws-researcher{grid-area:res;}.ws-topic-selector{grid-area:top;}.ws-writer{grid-area:wri;}.ws-seo-agent{grid-area:seo;}
 .ws-english-writer{grid-area:eng;}.ws-chinese-writer{grid-area:chi;}.ws-reviewer{grid-area:rev;}.ws-poster{grid-area:pos;}
 .ws-feedback-collector{grid-area:fdb;}.ws-style-updater{grid-area:sty;}.ws-knowledge-subagent{grid-area:kno;}
@@ -697,8 +749,16 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .table-divider{position:relative;z-index:1;width:42px;height:1px;background:var(--b0);}
 .table-topic{position:relative;z-index:1;font-size:12px;color:var(--t1);width:100%;line-height:1.55;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
 .table-note{position:relative;z-index:1;font-size:10px;color:var(--t2);}
+.collab-lane{position:relative;z-index:2;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:92%;}
+.collab-agent{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:10px;border:1px solid rgba(122,169,255,.45);background:rgba(17,29,56,.72);}
+.collab-agent.working{border-color:rgba(56,212,142,.65);background:rgba(18,57,52,.68);}
+.ca-avatar{width:16px;height:16px;border-radius:4px;background:linear-gradient(180deg,#ffd8a8,#cfa26f);position:relative;}
+.ca-avatar:before{content:"";position:absolute;left:3px;top:4px;width:2px;height:2px;background:#211f27;box-shadow:7px 0 0 #211f27;}
+.ca-name{font-size:9px;color:#d8e8ff;}
+.ca-bubble{font-size:8px;color:#afc9f3;background:rgba(122,169,255,.15);border:1px solid rgba(122,169,255,.28);padding:2px 5px;border-radius:999px;}
 .team-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex-shrink:0;}
 .tbs{padding:10px 12px;border:1px solid var(--b0);border-radius:12px;background:rgba(255,255,255,.48);font-size:11px;color:var(--t1);display:flex;flex-direction:column;gap:4px;}
+.tbs{box-shadow:0 2px 8px rgba(44,40,37,.04);}
 .tbs span{font-size:18px;line-height:1;font-weight:800;color:var(--t0);}
 .tbs.ok span{color:var(--ok);} .tbs.wait span{color:var(--wait);} .tbs.brand span{color:var(--brand);}
 /* PIPELINE STRIP */
@@ -821,7 +881,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .set-val.warn{color:var(--warn);}
 
 /* RIGHT PANEL */
-.right-panel{background:var(--bg1);border-left:1px solid var(--b0);
+.right-panel{background:linear-gradient(180deg,#111d36,#0d162b);border-left:1px solid var(--b0);
   overflow:hidden;display:flex;flex-direction:column;}
 .rp-hd{padding:10px 12px 6px;font-size:8.5px;font-weight:700;color:var(--t2);
   letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--b0);flex-shrink:0;}
@@ -872,6 +932,14 @@ body[data-mode="control"]    .mode-control{display:flex;}
   font-family:inherit;transition:all .12s;flex-shrink:0;}
 .back-btn:hover{border-color:var(--brand);color:var(--brand);}
 #ad-inner{flex:1;overflow-y:auto;}
+.ad-chat{padding:10px 12px;border-top:1px solid var(--b0);display:flex;flex-direction:column;gap:6px;background:rgba(17,29,56,.15);}
+.ad-chat-log{max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;}
+.ad-bubble{font-size:9px;line-height:1.45;padding:5px 7px;border-radius:6px;max-width:92%;}
+.ad-bubble.user{align-self:flex-end;background:var(--brand-bg);color:var(--brand);}
+.ad-bubble.agent{align-self:flex-start;background:var(--bg2);color:var(--t0);}
+.ad-chat-row{display:flex;gap:5px;}
+.ad-chat-in{flex:1;border:1px solid var(--b0);border-radius:4px;padding:4px 6px;font-size:9px;background:var(--bg0);color:var(--t0);}
+.ad-chat-btn{border:1px solid var(--brand);background:var(--brand-bg);color:var(--brand);border-radius:4px;padding:4px 8px;font-size:9px;cursor:pointer;}
 
 /* ALERT */
 .alert-ov{position:fixed;inset:0;background:rgba(44,40,37,.4);
@@ -896,7 +964,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
 
 <!-- TOPBAR -->
 <nav class="topbar">
-  <div class="logo">AI 無人工廠<span class="logo-v">v10</span></div>
+  <div class="logo">AI 無人工廠<span class="logo-v">v11</span></div>
   <div class="mode-tabs">
     <button class="mt active" data-mode="overview" onclick="setMode('overview',this)">總覽</button>
     <button class="mt" data-mode="diagnostic" onclick="setMode('diagnostic',this)">診斷</button>
@@ -948,6 +1016,14 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <div class="stat-row"><span class="sl">Whop</span><span class="sv" id="m-whop">—</span></div>
       <div class="stat-row"><span class="sl">模型</span><span class="sv" id="k7">—</span></div>
     </div>
+
+    <div class="stat-section">
+      <div class="stat-hd">CD Hook 狀態</div>
+      <div class="stat-row"><span class="sl">Hook 作用</span><span class="sv">語氣/品質過濾</span></div>
+      <div class="stat-row"><span class="sl">可用 Hook</span><span class="sv" id="h0">—</span></div>
+      <div class="stat-row"><span class="sl">缺失 Hook</span><span class="sv" id="h1">—</span></div>
+      <div class="stat-row"><span class="sl">最近錯誤</span><span class="sv" id="h2">—</span></div>
+    </div>
   </aside>
 
   <!-- CENTER STAGE -->
@@ -958,6 +1034,12 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <!-- HERO -->
       <div class="hero" id="hero-bar">
         <div class="hero-left">
+          <div class="boss-chip">👑 Boss Console｜你下達絕對指令，團隊自主管理執行</div>
+          <div class="boss-hints">
+            <span class="bh">目前焦點：<strong id="boss-focus">秘書</strong></span>
+            <span class="bh">團隊負載：<strong id="boss-load">2 活躍</strong></span>
+            <span class="bh">操作提示：點選 Agent 可直接對話</span>
+          </div>
           <div class="hero-status">
             <span class="hero-dot"></span>
             <span class="hero-state" id="hero-state">待命中</span>
@@ -966,10 +1048,18 @@ body[data-mode="control"]    .mode-control{display:flex;}
           <div class="hero-meta">
             <span class="hero-stage" id="hero-stage">—</span>
             <span class="hero-ts" id="hero-ts">—</span>
+            <span class="hero-next" id="hero-next">下一步：等待手動觸發</span>
+          </div>
+          <div class="hero-kpis">
+            <div class="hkpi"><span class="k">今日產出</span><span class="v" id="hk0">0 篇</span></div>
+            <div class="hkpi"><span class="k">活躍 Agent</span><span class="v" id="hk1">0 / 11</span></div>
+            <div class="hkpi"><span class="k">API 今日</span><span class="v" id="hk2">0 次</span></div>
+            <div class="hkpi"><span class="k">本月收益</span><span class="v" id="hk5">$0</span></div>
           </div>
         </div>
         <div class="hero-actions">
           <button class="hero-run" onclick="triggerRun()">▶ 立即執行</button>
+          <button class="hero-diag" onclick="setMode('diagnostic',null)">🩺 查看診斷</button>
           <button class="hero-stop" onclick="triggerStop()">⏹ 停止</button>
         </div>
       </div>
@@ -977,7 +1067,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
         <div class="scene-caption">
           <div>
             <div class="scene-title">AI 團隊工作空間</div>
-            <div class="scene-sub">俯視辦公室控制室</div>
+            <div class="scene-sub">扁平化團隊：秘書/經理為內部 GameMaster，其他 Agent 平行協作</div>
           </div>
           <div class="scene-meta">
             <div class="scene-pill">選中 <strong id="overview-selected">無</strong></div>
@@ -985,34 +1075,34 @@ body[data-mode="control"]    .mode-control{display:flex;}
           </div>
         </div>
         <div class="office-room">
-          <div class="room-tag rt-nw"><strong>探索區</strong> 需求與選題</div>
+          <div class="room-tag rt-nw"><strong>探索區</strong> 探索與協調</div>
           <div class="room-tag rt-ne"><strong>生產區</strong> 內容與 SEO</div>
           <div class="room-tag rt-sw"><strong>回饋區</strong> 審稿與觀測</div>
           <div class="room-tag rt-se"><strong>知識區</strong> 發布與演化</div>
           <div class="office-grid">
             <div class="ws ws-researcher" id="ws-researcher" onclick="selectAgent('researcher')">
-              <div class="ws-hd"><span class="ws-icon">◎</span><div class="ws-copy"><span class="ws-name">研究員</span><span class="ws-phase">探索</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
-              <div class="ws-meta"><span class="ws-stxt idle" id="wst-researcher">休息中</span><span class="ws-brief">需求掃描</span></div>
+              <div class="ws-hd"><span class="ws-icon">◎</span><div class="ws-copy"><span class="ws-name">秘書</span><span class="ws-phase">協調</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-researcher">休息中</span><span class="ws-brief">需求翻譯</span></div>
             </div>
             <div class="ws ws-topic-selector" id="ws-topic-selector" onclick="selectAgent('topic-selector')">
-              <div class="ws-hd"><span class="ws-icon">◈</span><div class="ws-copy"><span class="ws-name">選題</span><span class="ws-phase">策略</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
-              <div class="ws-meta"><span class="ws-stxt idle" id="wst-topic-selector">休息中</span><span class="ws-brief">主題決策</span></div>
+              <div class="ws-hd"><span class="ws-icon">◈</span><div class="ws-copy"><span class="ws-name">經理</span><span class="ws-phase">統籌</span></div><span class="ws-led"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-meta"><span class="ws-stxt idle" id="wst-topic-selector">休息中</span><span class="ws-brief">技術統籌</span></div>
             </div>
             <div class="ws ws-writer" id="ws-writer" onclick="selectAgent('writer')">
               <div class="ws-hd"><span class="ws-icon">✦</span><div class="ws-copy"><span class="ws-name">中文初稿</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-writer">休息中</span><span class="ws-brief">內容寫作</span></div>
             </div>
             <div class="ws ws-seo-agent" id="ws-seo-agent" onclick="selectAgent('seo-agent')">
               <div class="ws-hd"><span class="ws-icon">S</span><div class="ws-copy"><span class="ws-name">SEO</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-seo-agent">休息中</span><span class="ws-brief">關鍵字優化</span></div>
             </div>
             <div class="ws ws-english-writer" id="ws-english-writer" onclick="selectAgent('english-writer')">
               <div class="ws-hd"><span class="ws-icon">E</span><div class="ws-copy"><span class="ws-name">英文寫手</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-english-writer">休息中</span><span class="ws-brief">雙語輸出</span></div>
             </div>
             <div class="center-table">
@@ -1022,37 +1112,38 @@ body[data-mode="control"]    .mode-control{display:flex;}
                 <div class="table-status" id="table-status">待命中</div>
                 <div class="table-divider"></div>
                 <div class="table-topic" id="table-topic">等待任務</div>
+                <div id="collab-lane" class="collab-lane"></div>
                 <div class="table-note">中央協作桌會同步顯示本輪主題與整體狀態</div>
               </div>
             </div>
             <div class="ws ws-chinese-writer" id="ws-chinese-writer" onclick="selectAgent('chinese-writer')">
               <div class="ws-hd"><span class="ws-icon">中</span><div class="ws-copy"><span class="ws-name">中文詮釋</span><span class="ws-phase">生產</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-chinese-writer">休息中</span><span class="ws-brief">台灣語境</span></div>
             </div>
             <div class="ws ws-reviewer" id="ws-reviewer" onclick="selectAgent('reviewer')">
               <div class="ws-hd"><span class="ws-icon">◉</span><div class="ws-copy"><span class="ws-name">審稿</span><span class="ws-phase">品管</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-reviewer">休息中</span><span class="ws-brief">品質檢查</span></div>
             </div>
             <div class="ws ws-poster" id="ws-poster" onclick="selectAgent('poster')">
               <div class="ws-hd"><span class="ws-icon">◆</span><div class="ws-copy"><span class="ws-name">發文</span><span class="ws-phase">發布</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-poster">休息中</span><span class="ws-brief">上架平台</span></div>
             </div>
             <div class="ws ws-feedback-collector" id="ws-feedback-collector" onclick="selectAgent('feedback-collector')">
               <div class="ws-hd"><span class="ws-icon">F</span><div class="ws-copy"><span class="ws-name">回報收集</span><span class="ws-phase">回饋</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-feedback-collector">休息中</span><span class="ws-brief">表現追蹤</span></div>
             </div>
             <div class="ws ws-style-updater" id="ws-style-updater" onclick="selectAgent('style-updater')">
               <div class="ws-hd"><span class="ws-icon">↺</span><div class="ws-copy"><span class="ws-name">風格進化</span><span class="ws-phase">進化</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-style-updater">休息中</span><span class="ws-brief">策略調整</span></div>
             </div>
             <div class="ws ws-knowledge-subagent" id="ws-knowledge-subagent" onclick="selectAgent('knowledge-subagent')">
               <div class="ws-hd"><span class="ws-icon">K</span><div class="ws-copy"><span class="ws-name">知識庫</span><span class="ws-phase">進化</span></div><span class="ws-led"></span></div>
-              <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
+              <div class="ws-desk"><span class="ws-avatar"></span><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-knowledge-subagent">休息中</span><span class="ws-brief">資料沉澱</span></div>
             </div>
           </div>
@@ -1174,10 +1265,12 @@ body[data-mode="control"]    .mode-control{display:flex;}
 <script>
 let countdown=5,timer=null,lastData=null,devtoName='';
 let selectedAgentId=null,currentLogTab='cron';
+let fetchFailCount=0,lastFetchErr='';
+const agentChatHistories={};
 
 const FM=[
-  {id:'researcher',icon:'◎',label:'研究員',phase:'探索'},
-  {id:'topic-selector',icon:'◈',label:'選題',phase:'策略'},
+  {id:'researcher',icon:'◎',label:'秘書',phase:'協調'},
+  {id:'topic-selector',icon:'◈',label:'經理',phase:'統籌'},
   {id:'writer',icon:'✦',label:'中文初稿',phase:'生產'},
   {id:'seo-agent',icon:'S',label:'SEO',phase:'生產'},
   {id:'english-writer',icon:'E',label:'英文寫手',phase:'生產'},
@@ -1190,6 +1283,9 @@ const FM=[
 ];
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function utcStamp(){
+  return new Date().toISOString().slice(0,16).replace('T',' ')+' UTC';
+}
 
 /* MODE SWITCHING */
 function setMode(mode,btn){
@@ -1206,9 +1302,11 @@ function updateWorkstations(data){
   const st={};(data.flow||[]).forEach(a=>{st[a.id]=a;});
   const hasSel=!!selectedAgentId;
   let wk=0,wt=0,id=0;
+  const collabAgents=[];
   FM.forEach(a=>{
     const s=(st[a.id]||{}).status||'idle';
     if(s==='working')wk++;else if(s==='waiting')wt++;else id++;
+    if(s==='working'||s==='waiting')collabAgents.push({id:a.id,label:a.label,status:s});
     const el=document.getElementById('ws-'+a.id);
     if(!el)return;
     let cls='ws ws-'+a.id+' '+s;
@@ -1216,7 +1314,10 @@ function updateWorkstations(data){
     else if(hasSel)cls+=' dimmed';
     el.className=cls;
     const stxt=document.getElementById('wst-'+a.id);
-    if(stxt){stxt.textContent=s==='working'?'工作中':s==='waiting'?'等待中':'休息中';stxt.className='ws-stxt '+s;}
+    if(stxt){
+      const sm=s==='working'?'🟢 工作中':s==='waiting'?'🔵 等待中':'⚪ 休息中';
+      stxt.textContent=sm;stxt.className='ws-stxt '+s;
+    }
   });
   const state=data.state||'idle';
   const ts=document.getElementById('table-status');
@@ -1226,6 +1327,16 @@ function updateWorkstations(data){
   const topicText=(pipe.article&&pipe.article.title)?pipe.article.title:'等待任務';
   const tt=document.getElementById('table-topic');
   if(tt)tt.textContent=topicText;
+  const lane=document.getElementById('collab-lane');
+  if(lane){
+    lane.innerHTML=collabAgents.slice(0,5).map((a,idx)=>
+      '<div class="collab-agent '+a.status+'">'+
+      '<span class="ca-avatar"></span>'+
+      '<span class="ca-name">'+esc(a.label)+'</span>'+
+      '<span class="ca-bubble">'+(a.status==='working'?'討論中':'待交接')+(idx===0?' · 主講':'')+'</span>'+
+      '</div>'
+    ).join('') || '<div class="collab-agent"><span class="ca-avatar"></span><span class="ca-name">團隊待命</span><span class="ca-bubble">等待下一輪任務</span></div>';
+  }
   const selectedLabel = selectedAgentId ? ((FM.find(a=>a.id===selectedAgentId)||{}).label||selectedAgentId) : '無';
   const selectedEl=document.getElementById('overview-selected'); if(selectedEl) selectedEl.textContent=selectedLabel;
   const tbSel=document.getElementById('tb-selected'); if(tbSel) tbSel.textContent=selectedLabel;
@@ -1282,7 +1393,16 @@ function selectAgent(id){
     (ri?'<div class="ad-sec"><div class="ad-sl">讀取</div>'+ri+'</div>':'')+
     (wi?'<div class="ad-sec"><div class="ad-sl">寫入</div>'+wi+'</div>':'')+
     (sp?'<div class="ad-sec"><div class="ad-sl">Skills</div><div class="pills">'+sp+'</div></div>':'')+
-    (hp?'<div class="ad-sec"><div class="ad-sl">Hooks</div><div class="pills">'+hp+'</div></div>':'');
+    (hp?'<div class="ad-sec"><div class="ad-sl">Hooks</div><div class="pills">'+hp+'</div></div>':'')+
+    '<div class="ad-chat">'+
+      '<div class="ad-sl">與 Agent 對話（GameMaster）</div>'+
+      '<div id="agent-chat-log" class="ad-chat-log"></div>'+
+      '<div class="ad-chat-row">'+
+        '<input id="agent-chat-in" class="ad-chat-in" placeholder="輸入要給 '+esc(aInfo.label)+' 的指令..." onkeydown="if(event.key===\\'Enter\\'){event.preventDefault();sendAgentChat();}"/>'+
+        '<button class="ad-chat-btn" onclick="sendAgentChat()">送出</button>'+
+      '</div>'+
+    '</div>';
+  renderAgentChat(id);
   if(lastData)updateWorkstations(lastData);
 }
 
@@ -1293,12 +1413,45 @@ function deselectAgent(){
   if(lastData)updateWorkstations(lastData);
 }
 
+function renderAgentChat(agentId){
+  const log=document.getElementById('agent-chat-log');
+  if(!log)return;
+  const hist=agentChatHistories[agentId]||[];
+  log.innerHTML=hist.map(m=>'<div class="ad-bubble '+m.role+'">'+esc(m.text)+'</div>').join('')||
+    '<div class="ad-bubble agent">尚未對話。你可以直接下達指令給此 Agent。</div>';
+  log.scrollTop=log.scrollHeight;
+}
+
+async function sendAgentChat(){
+  if(!selectedAgentId)return;
+  const input=document.getElementById('agent-chat-in');
+  if(!input)return;
+  const msg=input.value.trim();
+  if(!msg)return;
+  input.value='';
+  const agent=(FM.find(a=>a.id===selectedAgentId)||{label:selectedAgentId}).label;
+  agentChatHistories[selectedAgentId]=agentChatHistories[selectedAgentId]||[];
+  agentChatHistories[selectedAgentId].push({role:'user',text:msg});
+  renderAgentChat(selectedAgentId);
+  try{
+    const prompt='你現在扮演「'+agent+'」Agent，請用團隊內部回報格式，簡短回覆：'+msg;
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:prompt})});
+    const d=await r.json();
+    agentChatHistories[selectedAgentId].push({role:'agent',text:d.reply||'（無回應）'});
+  }catch(e){
+    agentChatHistories[selectedAgentId].push({role:'agent',text:'❌ 無法連線到 Agent 對話服務'});
+  }
+  renderAgentChat(selectedAgentId);
+}
+
 /* KPI + LEFT PANEL */
 function renderKPI(data){
   const prog=data.pipeline||{},usage=data.usage||{};
   const q=(id)=>document.getElementById(id);
   if(q('k0'))q('k0').textContent=(prog.count||0)+' 篇';
+  if(q('hk0'))q('hk0').textContent=(prog.count||0)+' 篇';
   if(q('k2'))q('k2').textContent=(usage.today||0)+' 次';
+  if(q('hk2'))q('hk2').textContent=(usage.today||0)+' 次';
   if(q('k3'))q('k3').textContent=usage.total||0;
   const sc=(data.diag||{}).score||0;
   const k4=q('k4');
@@ -1306,13 +1459,20 @@ function renderKPI(data){
   const flow=data.flow||[];
   const active=flow.filter(a=>a.status==='working'||a.status==='waiting').length;
   if(q('k1'))q('k1').textContent=active+' / 11';
+  if(q('hk1'))q('hk1').textContent=active+' / 11';
+  if(q('boss-load'))q('boss-load').textContent=active+' 活躍';
   const working=flow.find(a=>a.status==='working');
   if(q('k-stage'))q('k-stage').textContent=working?working.label:'—';
+  if(q('boss-focus'))q('boss-focus').textContent=working?working.label:'經理';
   if(q('k7'))q('k7').textContent=((data.api||{}).model||'—').slice(0,14);
   const cronCnt=data.cron_count||0;
   const mapi=q('m-api');if(mapi){mapi.textContent=(data.api&&data.api.model)?'✓ 正常':'⚠ 未知';mapi.className='sv '+((data.api&&data.api.model)?'ok':'warn');}
   const mcron=q('m-cron');if(mcron){mcron.textContent=cronCnt>0?'✓ '+cronCnt+' 個':'⚠ 未設定';mcron.className='sv '+(cronCnt>0?'ok':'warn');}
   const mw=q('m-whop');if(mw){mw.textContent=data.has_placeholder?'待設定':'✓ 已設定';mw.className='sv '+(data.has_placeholder?'':'ok');}
+  const hooks=data.hooks||{};
+  const h0=q('h0');if(h0){h0.textContent=(hooks.ok||0)+' / '+(hooks.total||0);h0.className='sv '+((hooks.missing||0)===0?'ok':'warn');}
+  const h1=q('h1');if(h1){h1.textContent=String(hooks.missing||0);h1.className='sv '+((hooks.missing||0)>0?'warn':'ok');}
+  const h2=q('h2');if(h2){h2.textContent=String(hooks.error||0);h2.className='sv '+((hooks.error||0)>0?'err':'ok');}
   // diagnostic gauge
   const gs=q('gauge-score');if(gs)gs.textContent=sc+'%';
   const gr=q('gauge-ring');if(gr)gr.style.setProperty('--gauge-pct',Math.max(0,Math.min(100,sc))+'%');
@@ -1365,6 +1525,20 @@ function renderStatus(data){
   const working=flow.find(a=>a.status==='working');
   const hstage=document.getElementById('hero-stage');
   if(hstage)hstage.textContent=working?'▸ '+working.label:'—';
+  const hnext=document.getElementById('hero-next');
+  if(hnext){
+    let txt='下一步：等待手動觸發';
+    if(s==='running'){
+      if(working){
+        txt='下一步：由「'+working.label+'」回報，秘書/經理同步協調下一批任務';
+      }else{
+        txt='下一步：秘書與經理盤點各 Agent 工作負載';
+      }
+    }else if(s==='error'){
+      txt='下一步：查看診斷或活動頁定位錯誤';
+    }
+    hnext.textContent=txt;
+  }
   // overview-topic-chip now shows working count
   const wk=flow.filter(a=>a.status==='working').length;
   const otc=document.getElementById('overview-topic-chip');
@@ -1377,6 +1551,7 @@ async function fetchRevenue(){
     const r=await fetch('/api/revenue');const d=await r.json();
     const total=d.total_revenue||0,cost=d.monthly_cost||200,gap=total-cost;
     const k5=document.getElementById('k5');if(k5)k5.textContent='$'+total;
+    const hk5=document.getElementById('hk5');if(hk5)hk5.textContent='$'+total;
     const k6=document.getElementById('k6');
     if(k6){k6.textContent=(gap>=0?'+':'')+'$'+gap;k6.className='sv '+(gap>=0?'ok':'warn');}
   }catch(e){}
@@ -1471,7 +1646,13 @@ function renderProposals(){}
 /* MAIN FETCH */
 async function fetchNow(){
   try{
-    const r=await fetch('/api/status');const d=await r.json();
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),8000);
+    const r=await fetch('/api/status',{signal:ctrl.signal});
+    clearTimeout(tid);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    fetchFailCount=0;lastFetchErr='';
     lastData=d;
     renderStatus(d);renderKPI(d);updateWorkstations(d);renderPipeline(d);
     if(currentLogTab!=='standup')renderLog(d,currentLogTab);
@@ -1479,7 +1660,23 @@ async function fetchNow(){
     checkAlerts(d);
     if(selectedAgentId)selectAgent(selectedAgentId);
     countdown=5;
-  }catch(e){console.error(e);}
+  }catch(e){
+    fetchFailCount++;
+    lastFetchErr=(e&&e.name==='AbortError')?'請求逾時（8秒）':((e&&e.message)?e.message:'未知錯誤');
+    console.error('fetch /api/status failed:',e);
+    const fallback={
+      state:'error',ts:utcStamp(),pipeline:{stages:[],article:null,count:0},flow:[],
+      usage:{today:0,total:0},diag:{score:0,issues:[]},api:{model:'離線'},cron_count:0,
+      has_placeholder:false,articles:[],
+      feed:[{time:'',agent:'system',msg:'監控連線失敗：'+lastFetchErr,type:'error'}],
+      error_log:['FETCH_ERROR: '+lastFetchErr]
+    };
+    renderStatus(fallback);renderFeed(fallback);
+    if(fetchFailCount===1||fetchFailCount%6===0){
+      showAlert('CRITICAL','監控連線異常','無法讀取 /api/status：'+lastFetchErr,'err');
+    }
+    countdown=5;
+  }
 }
 
 /* ALERTS */
@@ -1666,7 +1863,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/article"):
             parsed=urllib.parse.urlparse(self.path)
             params=urllib.parse.parse_qs(parsed.query)
-            name=params.get("name",[""])[0]
+            name=params.get("name",[""])[0].strip()
+            if not name:
+                suffix=parsed.path[len("/api/article"):].lstrip("/")
+                name=urllib.parse.unquote(suffix).strip()
             if name and re.match(r'^[\w\-\.]{1,100}$',name):
                 c=get_article_content(name)
                 if c:
@@ -1676,6 +1876,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(200)
             self.send_header("Content-Type","text/html; charset=utf-8")
+            self.send_header("Cache-Control","no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma","no-cache")
+            self.send_header("Expires","0")
             self.end_headers()
             self.wfile.write(HTML.encode("utf-8"))
 
@@ -1706,6 +1909,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type","application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin","*")
+        self.send_header("Cache-Control","no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma","no-cache")
+        self.send_header("Expires","0")
         self.end_headers()
         self.wfile.write(data)
 
@@ -1713,5 +1919,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     port=int(os.environ.get("DASHBOARD_PORT",3000))
-    print(f"Dashboard v10 AI 無人工廠控制室啟動：http://0.0.0.0:{port}")
+    print(f"Dashboard v11 AI 無人工廠控制室啟動：http://0.0.0.0:{port}")
     HTTPServer(("0.0.0.0",port),Handler).serve_forever()

@@ -265,6 +265,7 @@ ${H_SCOUT}
 兩個都完成後，輸出：
 「✅ BATCH_A_DONE:C${CYCLE} R:[RESEARCHER_DONE/FAIL] S:[SCOUT_DONE/FAIL]」
 " --allowedTools "Agent,Read,Write,WebFetch,Bash" --max-turns 6 >"$_TMP_A_OUT" 2>"$_TMP_A_ERR"
+  BATCH_A_STATUS=$?
   BATCH_A_RESULT=$(cat "$_TMP_A_OUT")
 
   if echo "$BATCH_A_RESULT" | grep -q "BATCH_A_DONE"; then
@@ -274,7 +275,12 @@ ${H_SCOUT}
   else
     _ERR_OUT=$(tail -8 "$_TMP_A_OUT" 2>/dev/null | tr '\n' ' ')
     _ERR_ERR=$(tail -3 "$_TMP_A_ERR" 2>/dev/null | tr '\n' ' ')
-    _REASON="${_ERR_OUT:-$_ERR_ERR}"
+    if [ "$BATCH_A_STATUS" -eq 124 ]; then
+      _REASON="timeout 120秒（可能 max-turns 不足或任務過重） | ${_ERR_ERR:-無stderr}"
+    else
+      _REASON="${_ERR_OUT:-$_ERR_ERR}"
+    fi
+    [ -z "$_REASON" ] && _REASON="無輸出（stdout/stderr 皆空，請檢查 claude 命令與 prompt）"
     echo "  └─ ❌ Batch A 失敗：${_REASON:0:150}"
     echo "[$TODAY C${CYCLE}][診斷] Batch A 失敗：${_REASON:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
@@ -540,7 +546,7 @@ ${H_FEEDBACK}
 
 完成後輸出：
 「BATCH_E_DONE:C${CYCLE} P:[DONE/FAIL] K:[DONE/FAIL] F:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 10 >"$_TMP_E_OUT" 2>"$_TMP_E_ERR"
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 20 >"$_TMP_E_OUT" 2>"$_TMP_E_ERR"
   BATCH_E_RESULT=$(cat "$_TMP_E_OUT")
 
   if echo "$BATCH_E_RESULT" | grep -q "BATCH_E_DONE"; then
@@ -693,10 +699,24 @@ ${FAIL_LOG}
 
 7. 輸出：BATCH_G_DONE:C${CYCLE} RATE:${THIS_RATE}% DIAGNOSIS:[一句核心發現]
 " --allowedTools "Agent,Read,Write,Bash" --max-turns 7 >"$_TMP_G_OUT" 2>"$_TMP_G_ERR"
+  BATCH_G_STATUS=$?
   BATCH_G_RESULT=$(cat "$_TMP_G_OUT")
 
+  G_SUCCESS=0
+  # 嚴格成功條件：
+  # 1) 有結構化完成標記 BATCH_G_DONE
+  # 2) 或至少同時包含「通過率數字 + 診斷關鍵詞」，且沒有常見錯誤訊號
   if echo "$BATCH_G_RESULT" | grep -q "BATCH_G_DONE"; then
+    G_SUCCESS=1
+  elif echo "$BATCH_G_RESULT" | grep -Eq "通過率[:：]?[0-9]+%" \
+    && echo "$BATCH_G_RESULT" | grep -Eq "失敗類型|下輪|診斷|核心發現" \
+    && ! echo "$BATCH_G_RESULT" | grep -Eqi "reached max turns|timed out|timeout|error|failed"; then
+    G_SUCCESS=1
+  fi
+
+  if [ "$G_SUCCESS" -eq 1 ]; then
     RATE=$(echo "$BATCH_G_RESULT" | grep -o "RATE:[0-9]*%" | head -1)
+    [ -z "$RATE" ] && RATE=$(echo "$BATCH_G_RESULT" | grep -o "通過率[0-9]*%" | head -1 | sed 's/通過率/RATE:/')
     DIAG=$(echo "$BATCH_G_RESULT" | grep -o "DIAGNOSIS:.*" | head -1 | sed 's/DIAGNOSIS://')
     echo "$BATCH_G_RESULT" | grep "【秘書長" | head -2 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch G 完成 | ${RATE} | ${DIAG:-（診斷已寫入 standup-log.md）}"
@@ -704,9 +724,15 @@ ${FAIL_LOG}
   else
     _ERR_OUT=$(tail -8 "$_TMP_G_OUT" 2>/dev/null | tr '\n' ' ')
     _ERR_ERR=$(tail -3 "$_TMP_G_ERR" 2>/dev/null | tr '\n' ' ')
-    echo "  └─ ❌ Batch G 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    if [ "$BATCH_G_STATUS" -eq 124 ]; then
+      _G_REASON="timeout 120秒（秘書長診斷未在時限內完成） | ${_ERR_ERR:-無stderr}"
+    else
+      _G_REASON="${_ERR_OUT:-$_ERR_ERR}"
+    fi
+    [ -z "$_G_REASON" ] && _G_REASON="無輸出（stdout/stderr 皆空）"
+    echo "  └─ ❌ Batch G 失敗：${_G_REASON:0:160}"
     # 秘書長失敗時 bash 直接寫入基本記錄
-    echo "[$TODAY C${CYCLE}] 通過率:${THIS_RATE}% | bash-fallback（秘書長未完成）" >> ".agent-growth/chief-of-staff.md"
+    echo "[$TODAY C${CYCLE}] 通過率:${THIS_RATE}% | bash-fallback（秘書長未完成） | 原因:${_G_REASON:0:60}" >> ".agent-growth/chief-of-staff.md"
     TOTAL_FAIL=$((TOTAL_FAIL + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   fi
   rm -f "$_TMP_G_OUT" "$_TMP_G_ERR"

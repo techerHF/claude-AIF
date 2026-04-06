@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$BASE_DIR"
+
 echo "=== AI 無人工廠 VPS 部署 ==="
 echo "時間：$(date)"
 
@@ -14,6 +17,7 @@ git pull origin "$CURRENT_BRANCH" || git pull origin master || true
 
 # 2. 設定 hook 執行權限
 chmod +x .claude/hooks/*.sh
+chmod +x "$BASE_DIR/auto-update-dashboard.sh"
 echo "Hook 權限設定完成"
 
 # 3. 確認 Python3 可用
@@ -75,11 +79,15 @@ if ! command -v crontab >/dev/null 2>&1; then
   fi
 fi
 
-# 設定兩條 cron
+# 設定排程（先清掉舊版/重複項目，再重建必要任務）
 (
-  crontab -l 2>/dev/null | grep -v 'ai-factory/run.sh' | grep -v 'feedback-collector' || true
-  echo "0  9 * * * /bin/bash ~/ai-factory/run.sh >> ~/ai-factory/logs/cron.log 2>&1"
-  echo "10 9 * * * cd ~/ai-factory && claude -p '呼叫 feedback-collector agent 收集昨日發文數據' --allowedTools 'Read,Write,Bash,Agent,WebFetch' --permission-mode acceptEdits --max-turns 20 >> ~/ai-factory/logs/feedback.log 2>&1"
+  crontab -l 2>/dev/null \
+    | grep -v 'run.sh >> .*logs/cron.log' \
+    | grep -v "feedback-collector agent 收集昨日發文數據" \
+    | grep -v 'auto-update-dashboard.sh >> .*logs/cron.log' || true
+  echo "0  9 * * * /bin/bash $BASE_DIR/run.sh >> $BASE_DIR/logs/cron.log 2>&1"
+  echo "10 9 * * * cd $BASE_DIR && claude -p '呼叫 feedback-collector agent 收集昨日發文數據' --allowedTools 'Read,Write,Bash,Agent,WebFetch' --permission-mode acceptEdits --max-turns 20 >> $BASE_DIR/logs/feedback.log 2>&1"
+  echo "*/5 * * * * /bin/bash $BASE_DIR/auto-update-dashboard.sh >> $BASE_DIR/logs/cron.log 2>&1"
 ) | crontab -
 
 echo "Cron 排程已設定："
