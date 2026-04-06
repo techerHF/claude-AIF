@@ -23,3 +23,4 @@
 
 ## 執行記錄
 [2026-04-06 C1] 掃描：SHT31 高精度溫濕度感測校正 | Reddit:封鎖 | 發現:WebFetch old.reddit.com 被拒絕，WebSearch 未授權，無法掃描 Reddit 趨勢
+[2026-04-06 C2] 掃描：HMC5883L 磁力計三軸方位計算 | Reddit:封鎖 | 發現:HMC5883L 為低成本三軸磁力計，I2C 接口，需旋轉矩陣校正硬磁干擾，方位角計算依賴反正切函數整合 X/Y 軸數據，適合 e-compass 應用
