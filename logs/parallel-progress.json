@@ -1,1 +1,1 @@
-{"cycle": 6, "total_done": 84, "pass": 44, "fail": 40, "status": "running", "topic": "MCP4725 DAC 類比輸出波形生成", "msg_count": 0}
+{"cycle": 4, "total_done": 56, "pass": 27, "fail": 29, "status": "running", "topic": "INA219 電流功率精準監測", "msg_count": 0}
