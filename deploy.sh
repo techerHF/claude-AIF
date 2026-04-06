@@ -75,11 +75,16 @@ if ! command -v crontab >/dev/null 2>&1; then
   fi
 fi
 
-# 設定兩條 cron
+# 設定三條 cron（去重後重加）
 (
-  crontab -l 2>/dev/null | grep -v 'ai-factory/run.sh' | grep -v 'feedback-collector' || true
+  crontab -l 2>/dev/null \
+    | grep -v 'ai-factory/run.sh' \
+    | grep -v 'feedback-collector' \
+    | grep -v 'auto-update' \
+    || true
   echo "0  9 * * * /bin/bash ~/ai-factory/run.sh >> ~/ai-factory/logs/cron.log 2>&1"
   echo "10 9 * * * cd ~/ai-factory && claude -p '呼叫 feedback-collector agent 收集昨日發文數據' --allowedTools 'Read,Write,Bash,Agent,WebFetch' --permission-mode acceptEdits --max-turns 20 >> ~/ai-factory/logs/feedback.log 2>&1"
+  echo "* * * * * /bin/bash ~/ai-factory/auto-update.sh >> ~/ai-factory/logs/auto-update.log 2>&1"
 ) | crontab -
 
 echo "Cron 排程已設定："
