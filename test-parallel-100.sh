@@ -195,179 +195,232 @@ for CYCLE in $(seq 1 10); do
   echo "       讀取留言板... $(grep -c "^\\[" "$MSG_BOARD" 2>/dev/null || echo 0) 則待讀訊息"
   echo "       緊急停止：touch ~/ai-factory/.stop-test"
 
-  # ── 讀取留言板給 orchestrator 參考 ──
-  LAST_MSGS=$(tail -5 "$MSG_BOARD" 2>/dev/null || echo "（留言板空）")
+  # ── 讀取留言板 + 所有 agent 歷史（bash層注入，不靠agent自己讀）──
+  LAST_MSGS=$(tail -8 "$MSG_BOARD" 2>/dev/null || echo "（留言板空）")
+
+  # 預讀各 agent 成長記錄（最後5條有效記錄，確保 prompt 有真實歷史）
+  _hist() { grep "\[20" ".agent-growth/$1.md" 2>/dev/null | tail -5 || echo "（$1 尚無記錄，第一次執行）"; }
+  H_RESEARCHER=$(_hist researcher)
+  H_SCOUT=$(_hist revenue-scout)
+  H_SELECTOR=$(_hist topic-selector)
+  H_WRITER=$(_hist writer)
+  H_EN=$(_hist english-writer)
+  H_SEO=$(_hist seo-agent)
+  H_REVIEWER=$(_hist reviewer)
+  H_CHINESE=$(_hist chinese-writer)
+  H_POSTER=$(_hist poster)
+  H_KNOW=$(_hist knowledge-subagent)
+  H_FEEDBACK=$(_hist feedback-collector)
+  H_STYLE=$(_hist style-updater)
+  H_PRODUCT=$(_hist product-builder)
+  H_CHIEF=$(_hist chief-of-staff)
 
   # ── BATCH A：【研究員】+【營收偵察員】平行 ──
   echo ""
   echo "  ┌─ BATCH A：【研究員】研究 + 【營收偵察員】評估"
   echo "  │  正在喚醒 2 個 agent..."
-  _TMP_A=$(mktemp)
-  BATCH_A_RESULT=$(timeout 120 claude -p "
+  _TMP_A_OUT=$(mktemp); _TMP_A_ERR=$(mktemp)
+  timeout 120 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10）
-
-你正在協調 AI 無人工廠的兩位 agent 執行任務。
-請展示每個 agent 的思考過程（用中文標籤格式）。
 
 留言板最新動態：
 ${LAST_MSGS}
 
-─── 請依序呼叫以下兩個子 agent，每個都必須在開始前輸出思考展示 ───
+─── 呼叫以下兩個子 agent ───
 
 ## 子 agent 1：researcher（研究員）
+
+【研究員的歷史記錄（這是他的真實記憶，必須引用）】：
+${H_RESEARCHER}
+
 在呼叫前，先輸出：
-「【研究員 🔍】思考中：準備掃描 $TOPIC 的市場熱度...」
+「【研究員 🔍】根據歷史記錄，上次[引用一條具體記錄]。這次我要做的不一樣是：[具體說明]。開始掃描 $TOPIC...」
 
 任務：
-1. 讀取 .agent-growth/researcher.md（了解自己的歷史）
+1. 評估歷史記錄中的失敗模式（若有），調整本次策略
 2. 嘗試 WebFetch https://old.reddit.com/r/arduino/top.json?t=week&limit=3
-3. 在 .agent-growth/researcher.md 加入一行（格式固定）：
-   [$TODAY C${CYCLE}] 掃描：$TOPIC | Reddit:[成功/封鎖] | 發現:[一句重點]
-4. 在留言板 $MSG_BOARD 加入一行：
-   [$TODAY C${CYCLE}][研究員→全隊] $TOPIC 趨勢：[一句觀察，給 writer 的建議]
+3. 在 .agent-growth/researcher.md append 一行（直接用 Bash echo，格式固定，不能跳過）：
+   [$TODAY C${CYCLE}] 掃描：$TOPIC | Reddit:[成功/封鎖] | 策略調整:[和上次相比的改變] | 發現:[一句重點]
+4. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][研究員→全隊] $TOPIC：[一句具體市場觀察，給 writer 的切入建議]
 5. 回報：RESEARCHER_DONE:C${CYCLE}
 
 ## 子 agent 2：revenue-scout（營收偵察員）
+
+【營收偵察員的歷史記錄】：
+${H_SCOUT}
+
 在呼叫前，先輸出：
-「【營收偵察員 💰】思考中：評估 $TOPIC 的商業潛力...」
+「【營收偵察員 💰】歷史顯示[引用記錄]。這次評估 $TOPIC 時我會特別注意：[基於歷史的具體重點]。」
 
 任務：
-1. 讀取 .agent-growth/revenue-scout.md
-2. 讀取留言板最後 3 行（了解研究員觀察）
-3. 評估「$TOPIC」商業潛力（1-10分），說明理由
-4. 在 .agent-growth/revenue-scout.md 加入：
-   [$TODAY C${CYCLE}] 評估：$TOPIC | 潛力:[N]/10 | 理由:[一句]
-5. 在留言板加入：
-   [$TODAY C${CYCLE}][營收偵察員→秘書長] $TOPIC 潛力:[N]/10
-6. 回報：SCOUT_DONE:C${CYCLE}
+1. 基於歷史中的成功評估案例，調整本次評分方式
+2. 評估「$TOPIC」商業潛力（1-10分），說明評分邏輯
+3. 在 .agent-growth/revenue-scout.md append（用 Bash echo，不能跳過）：
+   [$TODAY C${CYCLE}] 評估：$TOPIC | 潛力:[N]/10 | 評分邏輯:[一句] | 歷史參考:[引用的上次記錄]
+4. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][營收偵察員→秘書長] $TOPIC 潛力:[N]/10，基於[一句評估根據]
+5. 回報：SCOUT_DONE:C${CYCLE}
 
 兩個都完成後，輸出：
 「✅ BATCH_A_DONE:C${CYCLE} R:[RESEARCHER_DONE/FAIL] S:[SCOUT_DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,WebFetch" --max-turns 6 2>"$_TMP_A")
+" --allowedTools "Agent,Read,Write,WebFetch,Bash" --max-turns 6 >"$_TMP_A_OUT" 2>"$_TMP_A_ERR"
+  BATCH_A_RESULT=$(cat "$_TMP_A_OUT")
 
   if echo "$BATCH_A_RESULT" | grep -q "BATCH_A_DONE"; then
     echo "$BATCH_A_RESULT" | grep -E "【(研究員|營收偵察員)" | head -4 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch A 完成（$(echo "$BATCH_A_RESULT" | grep "BATCH_A_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   else
-    _ERR=$(cat "$_TMP_A" 2>/dev/null | tail -3 | tr '\n' ' ')
-    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_A_RESULT" | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch A 失敗：${_ERR:-（無錯誤輸出，可能是 timeout）}"
-    echo "[$TODAY C${CYCLE}][診斷] Batch A 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
+    _ERR_OUT=$(tail -8 "$_TMP_A_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_A_ERR" 2>/dev/null | tr '\n' ' ')
+    _REASON="${_ERR_OUT:-$_ERR_ERR}"
+    echo "  └─ ❌ Batch A 失敗：${_REASON:0:150}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch A 失敗：${_REASON:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   fi
-  rm -f "$_TMP_A"
+  # Fallback：確保記憶一定被更新（agent 沒寫時 bash 補寫）
+  grep -q "C${CYCLE}" ".agent-growth/researcher.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 掃描：$TOPIC | bash-fallback | Batch A $(echo "$BATCH_A_RESULT" | grep -q "RESEARCHER_DONE" && echo "成功" || echo "未完成")" >> ".agent-growth/researcher.md"
+  grep -q "C${CYCLE}" ".agent-growth/revenue-scout.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 評估：$TOPIC | bash-fallback | $(echo "$BATCH_A_RESULT" | grep -q "SCOUT_DONE" && echo "成功" || echo "未完成")" >> ".agent-growth/revenue-scout.md"
+  rm -f "$_TMP_A_OUT" "$_TMP_A_ERR"
 
   # ── BATCH B：【選題師】──
   echo ""
   echo "  ┌─ BATCH B：【選題師】確認主題"
-  _TMP_B=$(mktemp)
-  BATCH_B_RESULT=$(timeout 90 claude -p "
+  _TMP_B_OUT=$(mktemp); _TMP_B_ERR=$(mktemp)
+  # 讀取研究員剛才在留言板的發現
+  RES_LATEST=$(grep "研究員→全隊.*C${CYCLE}" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "（本輪研究員未留言）")
+  timeout 90 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch B）
-
-輸出：「【選題師 🎯】思考中：確認主題是否與上一輪不重複...」
 
 使用 Agent tool 呼叫 topic-selector 子 agent。
 
+【選題師的歷史記錄】：
+${H_SELECTOR}
+
+【研究員本輪留言】：
+${RES_LATEST}
+
+在呼叫前輸出：
+「【選題師 🎯】歷史顯示[引用一條記錄，說明哪類選題成功/失敗]。本輪研究員說：${RES_LATEST}。我的確認策略：[基於歷史+研究員建議的具體判斷]。」
+
 任務：
-1. 讀取 .agent-growth/topic-selector.md（了解歷史選題）
-2. 讀取留言板最後 3 行（研究員的發現）
-3. 本輪主題已定：$TOPIC
-4. 執行重複檢查：bash .claude/hooks/duplicate-check.sh '${TOPIC:0:10}'（若不存在直接略過）
-5. 在 .agent-growth/topic-selector.md 加入：
-   [$TODAY C${CYCLE}] 選題：$TOPIC | 重複:[UNIQUE/DUPLICATE] | 研究員建議:[已讀/未讀]
-6. 在留言板加入：
-   [$TODAY C${CYCLE}][選題師→撰稿人] 主題確認：$TOPIC，請重點著墨[研究員建議的切入點]
-7. 輸出：BATCH_B_DONE:C${CYCLE} TOPIC_CONFIRMED
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 4 2>"$_TMP_B")
+1. 基於歷史記錄，評估 $TOPIC 是否符合過去成功模式
+2. 執行重複檢查：bash .claude/hooks/duplicate-check.sh '${TOPIC:0:10}'（若腳本不存在直接輸出 UNIQUE）
+3. 在 .agent-growth/topic-selector.md append（Bash echo，不能跳過）：
+   [$TODAY C${CYCLE}] 選題：$TOPIC | 重複:[UNIQUE/DUPLICATE] | 歷史對比:[和過去相比的評估] | 研究員建議:[已採納/忽略，原因]
+4. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][選題師→撰稿人] 主題確認：$TOPIC。切入建議：[基於研究員觀察的具體寫作方向，不是泛泛而談]
+5. 輸出：BATCH_B_DONE:C${CYCLE} TOPIC_CONFIRMED
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 4 >"$_TMP_B_OUT" 2>"$_TMP_B_ERR"
+  BATCH_B_RESULT=$(cat "$_TMP_B_OUT")
 
   if echo "$BATCH_B_RESULT" | grep -q "BATCH_B_DONE"; then
     echo "$BATCH_B_RESULT" | grep "【選題師" | head -2 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch B 完成"
     TOTAL_PASS=$((TOTAL_PASS + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   else
-    _ERR=$(cat "$_TMP_B" 2>/dev/null | tail -3 | tr '\n' ' ')
-    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_B_RESULT" | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch B 失敗：${_ERR:-（timeout 或無輸出）}"
-    echo "[$TODAY C${CYCLE}][診斷] Batch B 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
+    _ERR_OUT=$(tail -8 "$_TMP_B_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_B_ERR" 2>/dev/null | tr '\n' ' ')
+    echo "  └─ ❌ Batch B 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch B 失敗：${_ERR_OUT:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   fi
-  rm -f "$_TMP_B"
+  grep -q "C${CYCLE}" ".agent-growth/topic-selector.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 選題：$TOPIC | bash-fallback | Batch B $(echo "$BATCH_B_RESULT" | grep -q "BATCH_B_DONE" && echo "成功" || echo "未完成")" >> ".agent-growth/topic-selector.md"
+  rm -f "$_TMP_B_OUT" "$_TMP_B_ERR"
 
   # ── BATCH C：【撰稿人】+【英文作家】+【SEO師】三路平行 ──
   echo ""
   echo "  ┌─ BATCH C：【撰稿人】+【英文作家】+【SEO師】三路平行"
   ART_PATH="articles/parallel-c${CYCLE}-$(date +%Y%m%d).md"
   EN_PATH="articles/parallel-c${CYCLE}-en-$(date +%Y%m%d).md"
+  SEL_MSG=$(grep "選題師→撰稿人" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "（無留言）")
+  RES_MSG=$(grep "研究員→全隊" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "（無留言）")
 
-  # 讀最新留言
-  SEL_MSG=$(grep "選題師→撰稿人" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無留言")
-  RES_MSG=$(grep "研究員→全隊" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無留言")
-
-  _TMP_C=$(mktemp)
-  BATCH_C_RESULT=$(timeout 240 claude -p "
+  _TMP_C_OUT=$(mktemp); _TMP_C_ERR=$(mktemp)
+  timeout 240 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch C）
 
-留言板訊息：
-- $SEL_MSG
-- $RES_MSG
+【選題師→撰稿人留言】：$SEL_MSG
+【研究員→全隊留言】：$RES_MSG
 
-請呼叫三個子 agent，每個呼叫前展示思考。
+請呼叫三個子 agent。
 
 ## 子 agent 1：writer（撰稿人）★最重要★
+
+【撰稿人的歷史記錄（過去的心得，必須引用）】：
+${H_WRITER}
+
 在呼叫前輸出：
-「【撰稿人 ✍️】思考中：讀取上輪學習記錄，整合選題師和研究員的建議，開始寫作...」
+「【撰稿人 ✍️】歷史記錄顯示：[引用最近一條記錄，說明上次心得]。這次根據選題師建議（${SEL_MSG:0:50}），我的寫作策略調整是：[具體說明和上次不同的地方]。開始寫 $TOPIC...」
 
 任務：
-1. 讀取 .agent-growth/writer.md（找上輪 C$((CYCLE-1)) 的學習記錄）
-2. 根據研究員和選題師的建議，寫 400-500 字 Arduino 教學：$TOPIC
-3. 儲存到 $ART_PATH
-4. 在 .agent-growth/writer.md 加入（必須寫入）：
-   [$TODAY C${CYCLE}] 主題：$TOPIC | 引用留言板:[是/否] | 字數:[N] | 本輪心得:[一句]
-5. 在留言板加入：
-   [$TODAY C${CYCLE}][撰稿人→審稿人] 完成初稿，請重點審查[最不確定的部分]
-6. 回報：WRITER_DONE:C${CYCLE} WORDS:[N]
+1. 基於歷史心得調整寫作策略，寫 400-500 字 Arduino 教學：$TOPIC
+2. 儲存到 $ART_PATH
+3. 在 .agent-growth/writer.md append（Bash echo，必須執行）：
+   [$TODAY C${CYCLE}] 主題：$TOPIC | 採納建議:[選題師/研究員的哪個建議] | 字數:[N] | 本輪心得:[一句具體觀察，不是空話]
+4. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][撰稿人→審稿人] 完成初稿：$TOPIC。最不確定的是：[具體說明一個疑問點]
+5. 回報：WRITER_DONE:C${CYCLE} WORDS:[N]
 
 ## 子 agent 2：english-writer（英文作家）
+
+【英文作家的歷史記錄】：
+${H_EN}
+
 在呼叫前輸出：
-「【英文作家 🌍】思考中：根據中文稿件方向，寫符合 Reddit 語氣的英文版...」
+「【英文作家 🌍】歷史顯示：[引用記錄]。這次我要改進的是：[基於歷史的具體調整]。」
 
 任務：
-1. 讀取 .agent-growth/english-writer.md
+1. 基於歷史經驗選擇最合適的語氣（conversational/technical）
 2. 寫英文 Reddit 版（300字），主題：$TOPIC，儲存到 $EN_PATH
-3. 在 .agent-growth/english-writer.md 加入：
-   [$TODAY C${CYCLE}] 英文版：$TOPIC | 字數:[N] | 語氣:[conversational/technical]
+3. 在 .agent-growth/english-writer.md append（Bash echo）：
+   [$TODAY C${CYCLE}] 英文版：$TOPIC | 字數:[N] | 語氣:[選擇原因] | 和上次差異:[一句]
 4. 回報：ENGLISH_DONE:C${CYCLE}
 
 ## 子 agent 3：seo-agent（SEO師）
+
+【SEO師的歷史記錄】：
+${H_SEO}
+
 在呼叫前輸出：
-「【SEO師 📊】思考中：分析 $TOPIC 的關鍵字競爭度，產生 3 個標題方案...」
+「【SEO師 📊】過去記錄顯示：[引用哪種標題格式效果好]。這次我選擇格式：[理由]。」
 
 任務：
-1. 讀取 .agent-growth/seo-agent.md
-2. 產生 3 個 SEO 標題，分析關鍵字，選最佳版本
-3. 在 .agent-growth/seo-agent.md 加入：
-   [$TODAY C${CYCLE}] SEO：$TOPIC | 最佳標題:[標題] | 關鍵字:[2個]
-4. 在留言板加入：
+1. 基於歷史標題效果，產生 3 個候選標題，選最佳
+2. 在 .agent-growth/seo-agent.md append（Bash echo）：
+   [$TODAY C${CYCLE}] SEO：$TOPIC | 最佳標題:[標題] | 選擇理由:[基於歷史的判斷]
+3. 在 $MSG_BOARD append：
    [$TODAY C${CYCLE}][SEO師→發文師] 建議標題：[最佳標題]
-5. 回報：SEO_DONE:C${CYCLE}
+4. 回報：SEO_DONE:C${CYCLE}
 
 全部完成後輸出：
 「BATCH_C_DONE:C${CYCLE} W:[DONE/FAIL] E:[DONE/FAIL] S:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 12 2>"$_TMP_C")
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 12 >"$_TMP_C_OUT" 2>"$_TMP_C_ERR"
+  BATCH_C_RESULT=$(cat "$_TMP_C_OUT")
 
   if echo "$BATCH_C_RESULT" | grep -q "BATCH_C_DONE"; then
     echo "$BATCH_C_RESULT" | grep -E "【(撰稿人|英文作家|SEO師)" | head -6 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch C 完成（$(echo "$BATCH_C_RESULT" | grep "BATCH_C_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   else
-    _ERR=$(cat "$_TMP_C" 2>/dev/null | tail -3 | tr '\n' ' ')
-    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_C_RESULT" | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch C 失敗：${_ERR:-（timeout 4分鐘，agent 未完成）}"
-    echo "[$TODAY C${CYCLE}][診斷] Batch C 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
+    _ERR_OUT=$(tail -8 "$_TMP_C_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_C_ERR" 2>/dev/null | tr '\n' ' ')
+    echo "  └─ ❌ Batch C 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch C 失敗：${_ERR_OUT:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   fi
-  rm -f "$_TMP_C"
+  # Fallback 寫入
+  grep -q "C${CYCLE}" ".agent-growth/writer.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 主題：$TOPIC | bash-fallback | $(echo "$BATCH_C_RESULT" | grep -q "WRITER_DONE" && echo "文章已產出" || echo "未完成")" >> ".agent-growth/writer.md"
+  grep -q "C${CYCLE}" ".agent-growth/english-writer.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 英文版：$TOPIC | bash-fallback" >> ".agent-growth/english-writer.md"
+  grep -q "C${CYCLE}" ".agent-growth/seo-agent.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] SEO：$TOPIC | bash-fallback" >> ".agent-growth/seo-agent.md"
+  rm -f "$_TMP_C_OUT" "$_TMP_C_ERR"
 
   # ── BATCH D：【審稿人】+【中文詮釋師】平行 ──
   echo ""
@@ -430,100 +483,121 @@ ${LAST_MSGS}
   echo "  ┌─ BATCH E：【發文師】+【知識管家】+【回饋偵察員】三路平行"
   SIMULATED_UV=$((RANDOM % 50 + 5))
   SIMULATED_CM=$((RANDOM % 20 + 2))
-  SEO_MSG=$(grep "SEO師→發文師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無SEO建議")
+  SEO_MSG=$(grep "SEO師→發文師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "（無SEO建議）")
 
-  _TMP_E=$(mktemp)
-  BATCH_E_RESULT=$(timeout 180 claude -p "
+  _TMP_E_OUT=$(mktemp); _TMP_E_ERR=$(mktemp)
+  timeout 180 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch E）
 
 ## 子 agent 1：poster（發文師）
+
+【發文師的歷史記錄】：
+${H_POSTER}
+
 在呼叫前輸出：
-「【發文師 📢】思考中：整合 SEO師建議（$SEO_MSG），準備 Reddit + dev.to 草稿...」
+「【發文師 📢】SEO師建議標題：${SEO_MSG:0:50}。歷史顯示[引用記錄]。這次我調整：[具體做法]。」
 
 任務：
-1. 讀取 .agent-growth/poster.md
-2. 產生 Reddit 草稿（r/arduino），儲存到 logs/reddit-draft-c${CYCLE}-$(date +%Y%m%d).md
-3. 產生 dev.to 草稿（含 YAML front matter），儲存到 logs/devto-draft-c${CYCLE}-$(date +%Y%m%d).md
-4. 在 .agent-growth/poster.md 加入：
-   [$TODAY C${CYCLE}] 發布：$TOPIC | 審查:${REVIEW_RESULT:-APPROVED} | Reddit+devto草稿完成
-5. 回報：POSTER_DONE:C${CYCLE}
+1. 基於 SEO 師建議和歷史記錄，產生 Reddit 草稿（r/arduino），儲存到 logs/reddit-draft-c${CYCLE}-$(date +%Y%m%d).md
+2. 產生 dev.to 草稿（含 YAML front matter），儲存到 logs/devto-draft-c${CYCLE}-$(date +%Y%m%d).md
+3. 在 .agent-growth/poster.md append（Bash echo）：
+   [$TODAY C${CYCLE}] 發布：$TOPIC | 審查:${REVIEW_RESULT:-APPROVED} | SEO採納:[是/否] | 和上次差異:[一句]
+4. 回報：POSTER_DONE:C${CYCLE}
 
 ## 子 agent 2：knowledge-subagent（知識管家）
+
+【知識管家的歷史記錄】：
+${H_KNOW}
+
 在呼叫前輸出：
-「【知識管家 📚】思考中：整合本輪所有 agent 的學習，歸納知識精華...」
+「【知識管家 📚】歷史顯示[引用記錄]。本輪留言板有[N]條新訊息，我要整合的關鍵是：[具體說明]。」
 
 任務：
-1. 讀取 .agent-growth/knowledge-subagent.md
-2. 讀取留言板最後 5 行（本輪 agent 互動記錄）
-3. Append 到 .knowledge/lessons.md：
-   [$TODAY C${CYCLE}] $TOPIC | 審查:${REVIEW_RESULT:-?} | UV模擬:$SIMULATED_UV | 留言板互動:[N]條
-4. 在 .agent-growth/knowledge-subagent.md 加入：
-   [$TODAY C${CYCLE}] 整合 C${CYCLE} 知識 | agent留言:[N]條 → lessons.md
-5. 回報：KNOWLEDGE_DONE:C${CYCLE}
+1. 計算本輪留言板有多少條 C${CYCLE} 的訊息
+2. 把本輪最重要的 3 個學習 append 到 .knowledge/lessons.md：
+   [$TODAY C${CYCLE}] $TOPIC | 審查:${REVIEW_RESULT:-?} | UV:$SIMULATED_UV | 最重要的團隊學習:[一句具體教訓]
+3. 在 .agent-growth/knowledge-subagent.md append（Bash echo）：
+   [$TODAY C${CYCLE}] 整合 C${CYCLE} | 留言板:[N]條 | 核心學習:[一句精華]
+4. 回報：KNOWLEDGE_DONE:C${CYCLE}
 
 ## 子 agent 3：feedback-collector（回饋偵察員）
+
+【回饋偵察員的歷史記錄】：
+${H_FEEDBACK}
+
 在呼叫前輸出：
-「【回饋偵察員 📡】思考中：收集模擬回饋數據，分析受眾反應...」
+「【回饋偵察員 📡】歷史顯示[引用一條記錄中的規律]。UV=$SIMULATED_UV，和歷史平均相比：[判斷]。」
 
 任務：
-1. 讀取 .agent-growth/feedback-collector.md
-2. 模擬數據：upvotes=$SIMULATED_UV comments=$SIMULATED_CM
-3. 儲存到 logs/feedback-c${CYCLE}-$(date +%Y%m%d).json：
-   {\"cycle\":$CYCLE,\"topic\":\"$TOPIC\",\"upvotes\":$SIMULATED_UV,\"comments\":$SIMULATED_CM,\"mode\":\"simulated\"}
-4. 在 .agent-growth/feedback-collector.md 加入：
-   [$TODAY C${CYCLE}] 回饋：$TOPIC | UV:$SIMULATED_UV CM:$SIMULATED_CM | 評級:[好/普通/差]
-5. 在留言板加入：
-   [$TODAY C${CYCLE}][回饋偵察員→風格調音師] UV=$SIMULATED_UV，建議$([ $SIMULATED_UV -gt 25 ] && echo '維持現有風格' || echo '調整切入角度')
+1. 模擬數據：upvotes=$SIMULATED_UV comments=$SIMULATED_CM
+2. 基於歷史判斷這次表現是 好/普通/差（要說明判斷標準）
+3. 儲存到 logs/feedback-c${CYCLE}-$(date +%Y%m%d).json
+4. 在 .agent-growth/feedback-collector.md append（Bash echo）：
+   [$TODAY C${CYCLE}] 回饋：$TOPIC | UV:$SIMULATED_UV | 評級:[基於歷史的判斷] | 發現規律:[一句]
+5. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][回饋偵察員→風格調音師] UV=$SIMULATED_UV（歷史對比:[評級]），建議：[具體行動]
 6. 回報：FEEDBACK_DONE:C${CYCLE} UV:$SIMULATED_UV
 
 完成後輸出：
 「BATCH_E_DONE:C${CYCLE} P:[DONE/FAIL] K:[DONE/FAIL] F:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 10 2>"$_TMP_E")
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 10 >"$_TMP_E_OUT" 2>"$_TMP_E_ERR"
+  BATCH_E_RESULT=$(cat "$_TMP_E_OUT")
 
   if echo "$BATCH_E_RESULT" | grep -q "BATCH_E_DONE"; then
     echo "$BATCH_E_RESULT" | grep -E "【(發文師|知識管家|回饋偵察員)" | head -6 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch E 完成（$(echo "$BATCH_E_RESULT" | grep "BATCH_E_DONE" | head -1)）"
     TOTAL_PASS=$((TOTAL_PASS + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   else
-    _ERR=$(cat "$_TMP_E" 2>/dev/null | tail -3 | tr '\n' ' ')
-    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_E_RESULT" | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch E 失敗：${_ERR:-（timeout 3分鐘）}"
-    echo "[$TODAY C${CYCLE}][診斷] Batch E 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
+    _ERR_OUT=$(tail -8 "$_TMP_E_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_E_ERR" 2>/dev/null | tr '\n' ' ')
+    echo "  └─ ❌ Batch E 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch E 失敗：${_ERR_OUT:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 3)); TOTAL_DONE=$((TOTAL_DONE + 3))
   fi
-  rm -f "$_TMP_E"
+  grep -q "C${CYCLE}" ".agent-growth/poster.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 發布：$TOPIC | bash-fallback" >> ".agent-growth/poster.md"
+  grep -q "C${CYCLE}" ".agent-growth/knowledge-subagent.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 整合 C${CYCLE} | bash-fallback" >> ".agent-growth/knowledge-subagent.md"
+  grep -q "C${CYCLE}" ".agent-growth/feedback-collector.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 回饋：$TOPIC | UV:$SIMULATED_UV | bash-fallback" >> ".agent-growth/feedback-collector.md"
+  rm -f "$_TMP_E_OUT" "$_TMP_E_ERR"
 
   # ── BATCH F：【風格調音師】+【產品建構師】平行 ──
   echo ""
   echo "  ┌─ BATCH F：【風格調音師】調整 + 【產品建構師】評估"
-  FB_MSG=$(grep "回饋偵察員→風格調音師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "無回饋")
+  FB_MSG=$(grep "回饋偵察員→風格調音師" "$MSG_BOARD" 2>/dev/null | tail -1 || echo "（無回饋）")
 
-  _TMP_F=$(mktemp)
-  BATCH_F_RESULT=$(timeout 150 claude -p "
+  _TMP_F_OUT=$(mktemp); _TMP_F_ERR=$(mktemp)
+  timeout 150 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch F）
 
 ## 子 agent 1：style-updater（風格調音師）
+
+【風格調音師的歷史記錄】：
+${H_STYLE}
+
 在呼叫前輸出：
-「【風格調音師 🎵】思考中：讀取回饋偵察員的訊息（$FB_MSG），決定是否調整寫作風格...」
+「【風格調音師 🎵】回饋偵察員說：${FB_MSG:0:60}。歷史記錄顯示[引用上次的規則更新]。這次決定：[有/無需調整，理由]。」
 
 任務：
-1. 讀取 .agent-growth/style-updater.md
-2. 分析：upvotes=$SIMULATED_UV（>25 = 好，<15 = 差）
-3. 如果 UV > 25，在 .claude/skills/writing-style.md 末尾加觀察：
-   ## 自動更新 $TODAY C${CYCLE}：UV=$SIMULATED_UV，維持現有寫作節奏
-4. 在 .agent-growth/style-updater.md 加入：
-   [$TODAY C${CYCLE}] 分析：UV=$SIMULATED_UV | 風格更新:[有/無] | 決策根據:[回饋偵察員留言]
-5. 回報：STYLE_DONE:C${CYCLE} ADJ:[yes/no]
+1. 基於回饋和歷史，判斷是否需要更新寫作風格（不是每次都更新，要有根據）
+2. 如果 UV > 25，在 .claude/skills/writing-style.md 末尾加一條有數據支撐的觀察
+3. 在 .agent-growth/style-updater.md append（Bash echo）：
+   [$TODAY C${CYCLE}] UV:$SIMULATED_UV | 更新:[有/無] | 決策邏輯:[基於歷史+回饋的具體判斷]
+4. 回報：STYLE_DONE:C${CYCLE} ADJ:[yes/no]
 
 ## 子 agent 2：product-builder（產品建構師）
+
+【產品建構師的歷史記錄】：
+${H_PRODUCT}
+
 在呼叫前輸出：
-「【產品建構師 🛠️】思考中：評估 $TOPIC 的產品化可行性，考慮 Whop 市場定位...」
+「【產品建構師 🛠️】歷史顯示[引用過去的評估記錄]。評估 $TOPIC 時，我對比歷史案例的判斷是：[具體預期分數範圍和原因]。」
 
 任務：
-1. 讀取 .agent-growth/product-builder.md
-2. 評估「$TOPIC」做成 Whop 產品（1-10分）
-3. 在 .agent-growth/product-builder.md 加入：
-   [$TODAY C${CYCLE}] 評估：$TOPIC | 潛力:[N]/10 | 決定:[做/跳過] | 預估定價:[$N]
+1. 基於歷史評估記錄，評估「$TOPIC」做成 Whop 產品（1-10分），必須引用至少一個歷史案例對比
+2. 在 .agent-growth/product-builder.md append（Bash echo）：
+   [$TODAY C${CYCLE}] 評估：$TOPIC | 潛力:[N]/10 | 歷史對比:[引用哪個過去案例] | 決定:[做/跳過]
 4. 如果潛力 ≥ 7，產生產品大綱到 logs/product-c${CYCLE}.md（3行：名稱+內容+定價）
 5. 在留言板加入：
    [$TODAY C${CYCLE}][產品建構師→秘書長] $TOPIC 產品潛力:[N]/10，$([ $(( RANDOM % 10 )) -ge 7 ] && echo '建議立即提案' || echo '暫緩')
@@ -531,80 +605,111 @@ ${LAST_MSGS}
 
 完成後輸出：
 「BATCH_F_DONE:C${CYCLE} ST:[DONE/FAIL] PB:[DONE/FAIL]」
-" --allowedTools "Agent,Read,Write" --max-turns 8 2>"$_TMP_F")
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 8 >"$_TMP_F_OUT" 2>"$_TMP_F_ERR"
+  BATCH_F_RESULT=$(cat "$_TMP_F_OUT")
 
   if echo "$BATCH_F_RESULT" | grep -q "BATCH_F_DONE"; then
     echo "$BATCH_F_RESULT" | grep -E "【(風格調音師|產品建構師)" | head -4 | sed 's/^/  │  /'
     echo "  └─ ✅ Batch F 完成"
     TOTAL_PASS=$((TOTAL_PASS + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   else
-    _ERR=$(cat "$_TMP_F" 2>/dev/null | tail -3 | tr '\n' ' ')
-    [ -z "$_ERR" ] && _ERR=$(echo "$BATCH_F_RESULT" | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch F 失敗：${_ERR:-（timeout 2.5分鐘）}"
-    echo "[$TODAY C${CYCLE}][診斷] Batch F 失敗：${_ERR:0:80}" >> "$MSG_BOARD"
+    _ERR_OUT=$(tail -8 "$_TMP_F_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_F_ERR" 2>/dev/null | tr '\n' ' ')
+    echo "  └─ ❌ Batch F 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    echo "[$TODAY C${CYCLE}][診斷] Batch F 失敗：${_ERR_OUT:0:100}" >> "$MSG_BOARD"
     TOTAL_FAIL=$((TOTAL_FAIL + 2)); TOTAL_DONE=$((TOTAL_DONE + 2))
   fi
-  rm -f "$_TMP_F"
+  grep -q "C${CYCLE}" ".agent-growth/style-updater.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] UV:$SIMULATED_UV | bash-fallback" >> ".agent-growth/style-updater.md"
+  grep -q "C${CYCLE}" ".agent-growth/product-builder.md" 2>/dev/null || \
+    echo "[$TODAY C${CYCLE}] 評估：$TOPIC | bash-fallback" >> ".agent-growth/product-builder.md"
+  rm -f "$_TMP_F_OUT" "$_TMP_F_ERR"
 
-  # ── BATCH G：【秘書長】診斷彙報（不只播報，要真正分析）──
+  # ── BATCH G：【秘書長】真正診斷（FIX-4）──
   echo ""
   echo "  ┌─ BATCH G：【秘書長】診斷全輪"
-  ALL_MSGS=$(tail -15 "$MSG_BOARD" 2>/dev/null || echo "（無）")
+  ALL_MSGS=$(tail -20 "$MSG_BOARD" 2>/dev/null || echo "（無）")
   THIS_RATE=$(( TOTAL_PASS * 100 / (TOTAL_DONE > 0 ? TOTAL_DONE : 1) ))
-  # 統計本輪失敗模式
-  FAIL_LOG=$(grep "C${CYCLE}.*診斷.*失敗" "$MSG_BOARD" 2>/dev/null | tr '\n' ' ' || echo "無失敗記錄")
+  FAIL_LOG=$(grep "\[診斷\].*C${CYCLE}" "$MSG_BOARD" 2>/dev/null | tr '\n' ';' || echo "本輪無失敗診斷記錄")
+  # 歷史通過率（比較是否在下降）
+  PREV_RATE=$(grep "通過率" ".agent-growth/chief-of-staff.md" 2>/dev/null | tail -2 | grep -o "[0-9]*%" | head -1 || echo "?")
 
-  _TMP_G=$(mktemp)
-  BATCH_G_RESULT=$(timeout 120 claude -p "
+  _TMP_G_OUT=$(mktemp); _TMP_G_ERR=$(mktemp)
+  timeout 120 claude -p "
 # AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch G）
 
-輸出：「【秘書長 👔】思考中：這輪通過率 ${THIS_RATE}%，失敗批次：${FAIL_LOG}，要找出模式...」
+先輸出：
+「【秘書長 👔】本輪通過率 ${THIS_RATE}%，上輪 ${PREV_RATE}。失敗記錄：${FAIL_LOG:0:100}。我要分析模式...」
 
 使用 Agent tool 呼叫 chief-of-staff 子 agent。
 
-本輪留言板（所有 agent 的互動）：
+【秘書長的歷史診斷記錄】：
+${H_CHIEF}
+
+【本輪所有 agent 留言板記錄】：
 ${ALL_MSGS}
 
-本輪失敗診斷記錄：
+【本輪失敗診斷（來自 msg-board）】：
 ${FAIL_LOG}
 
-═══ 你是秘書長，不是播報機。你的工作是診斷，不只是彙報。═══
+═══ 重要：你是診斷者，不是播報機。以下格式是強制的。═══
 
-任務（第 ${CYCLE}/10 輪）：
+任務：
 
-1. 讀取 .agent-growth/chief-of-staff.md（了解歷史模式）
+1. 對比歷史記錄（H_CHIEF），判斷本輪失敗是「首次出現」還是「重複模式」
 
-2. 分析本輪數據，回答三個問題：
-   - 哪些 batch 失敗？失敗的共同原因是什麼（timeout？API錯誤？agent 沒有輸出正確格式？）
-   - 留言板上哪個 agent 的訊息最有價值？哪個最沒用？
-   - 如果你是管理者，你會對下一輪做什麼具體調整？
+2. 分析失敗原因類型：
+   - 如果錯誤訊息包含 timeout → 是任務太重，需要降低 max-turns
+   - 如果錯誤訊息包含 rate_limit → API 超限，需要增加冷卻時間
+   - 如果錯誤訊息是空的 → agent 執行完但沒有輸出正確格式，需要修改 prompt
+   - 如果同一 batch 在不同 cycle 都失敗 → 系統性問題
 
-3. 在 .agent-growth/chief-of-staff.md 加入（必須寫入，要有具體分析，不能只是數字）：
-   [$TODAY C${CYCLE}] 第${CYCLE}輪診斷：通過率${THIS_RATE}% | 失敗原因:[具體] | 留言板品質:[評估] | 下輪建議:[一句具體行動]
+3. 在 .agent-growth/chief-of-staff.md append（Bash echo，必須執行，格式如下）：
+   [$TODAY C${CYCLE}] 通過率:${THIS_RATE}%(前:${PREV_RATE}) | 失敗Batch:[列出] | 失敗類型:[timeout/rate_limit/格式/系統性] | 留言板互動:[N]條 | 下輪指示:[一句具體行動]
 
-4. 在留言板加入（給下輪所有 agent 看的指示）：
-   [$TODAY C${CYCLE}][秘書長→全隊] 第${CYCLE}輪結束：通過率${THIS_RATE}%。失敗原因：[診斷]。下輪全隊注意：[具體指示]
+4. 輸出正式診斷報告（寫入 .team-memory/standup-log.md，建立若不存在）：
+   【第${CYCLE}輪診斷報告 $(date '+%H:%M')】
+   通過率：${THIS_RATE}%（前輪：${PREV_RATE}）
 
-5. 如果通過率 < 60% 或出現連續失敗，寫入 .team-memory/issues.md（建立檔案若不存在）：
-   [$TODAY C${CYCLE}] 警報：通過率${THIS_RATE}%，需要老闆決策：[一句問題描述]
+   [失敗分析]
+   $([ -n "$FAIL_LOG" ] && echo "- 本輪失敗：${FAIL_LOG:0:150}" || echo "- 本輪無失敗")
+   失敗類型判斷：[根據錯誤訊息分析]
+   是否為重複模式：[對比歷史後的判斷]
 
-6. $([ $((CYCLE % 3)) -eq 0 ] && echo "執行：bash .claude/hooks/telegram-notify.sh '📊 第${CYCLE}/10輪診斷｜通過率${THIS_RATE}%｜${FAIL_LOG:0:30}'" || echo "本輪跳過 Telegram")
+   [團隊狀態]
+   - 最活躍 agent：[誰的留言最有價值，說明原因]
+   - 需要改善 agent：[誰的記錄顯示有問題]
+
+   [秘書長決定]（不需老闆批准的自主行動）
+   - [具體行動1]
+
+   [升報老闆]（需要決策的問題）
+   - $([ $THIS_RATE -lt 60 ] && echo "通過率低於60%，建議老闆審查 Batch 設計" || echo "無需升報")
+
+5. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][秘書長→全隊] 診斷：通過率${THIS_RATE}%，失敗原因:[類型]。下輪注意：[具體指示]
+
+6. $([ $((CYCLE % 3)) -eq 0 ] && echo "執行：bash .claude/hooks/telegram-notify.sh '📊 第${CYCLE}輪診斷｜${THIS_RATE}%｜失敗原因:[類型]'" || echo "本輪跳過 Telegram")
 
 7. 輸出：BATCH_G_DONE:C${CYCLE} RATE:${THIS_RATE}% DIAGNOSIS:[一句核心發現]
-" --allowedTools "Agent,Read,Write,Bash" --max-turns 6 2>"$_TMP_G")
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 7 >"$_TMP_G_OUT" 2>"$_TMP_G_ERR"
+  BATCH_G_RESULT=$(cat "$_TMP_G_OUT")
 
   if echo "$BATCH_G_RESULT" | grep -q "BATCH_G_DONE"; then
     RATE=$(echo "$BATCH_G_RESULT" | grep -o "RATE:[0-9]*%" | head -1)
-    DIAG=$(echo "$BATCH_G_RESULT" | grep -o "DIAGNOSIS:.*" | head -1 | cut -d: -f2-)
+    DIAG=$(echo "$BATCH_G_RESULT" | grep -o "DIAGNOSIS:.*" | head -1 | sed 's/DIAGNOSIS://')
     echo "$BATCH_G_RESULT" | grep "【秘書長" | head -2 | sed 's/^/  │  /'
-    echo "  └─ ✅ Batch G 完成 | ${RATE} | 診斷：${DIAG:-（見成長記錄）}"
+    echo "  └─ ✅ Batch G 完成 | ${RATE} | ${DIAG:-（診斷已寫入 standup-log.md）}"
     TOTAL_PASS=$((TOTAL_PASS + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   else
-    _ERR=$(cat "$_TMP_G" 2>/dev/null | tail -3 | tr '\n' ' ')
-    echo "  └─ ❌ Batch G 失敗：${_ERR:-（秘書長無回應）}"
+    _ERR_OUT=$(tail -8 "$_TMP_G_OUT" 2>/dev/null | tr '\n' ' ')
+    _ERR_ERR=$(tail -3 "$_TMP_G_ERR" 2>/dev/null | tr '\n' ' ')
+    echo "  └─ ❌ Batch G 失敗：${_ERR_OUT:-$_ERR_ERR}"
+    # 秘書長失敗時 bash 直接寫入基本記錄
+    echo "[$TODAY C${CYCLE}] 通過率:${THIS_RATE}% | bash-fallback（秘書長未完成）" >> ".agent-growth/chief-of-staff.md"
     TOTAL_FAIL=$((TOTAL_FAIL + 1)); TOTAL_DONE=$((TOTAL_DONE + 1))
   fi
-  rm -f "$_TMP_G"
+  rm -f "$_TMP_G_OUT" "$_TMP_G_ERR"
 
   # ── 更新進度檔 ──
   python3 -c "
