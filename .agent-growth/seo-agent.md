@@ -13,12 +13,18 @@
 （對團隊或系統提出的改進建議）
 
 ## 上次執行時間
-[2026-04-06 C2]
+[2026-04-06 C3]
 
 ## 本月執行次數
-2
+3
 
 ## SEO 提案記錄
+
+### [2026-04-06 C3]
+- 主題：ADXL345 衝擊偵測靈敏度設定
+- 最佳標題：ADXL345 Impact Detection with Arduino - Setting Sensitivity from 62.5 mg to 16g
+- 關鍵字：ADXL345, sensitivity threshold, interrupt-based detection
+- 備註：三數字規格（62.5 mg / 16g / interrupt），強調 interrupt 省電優勢，符合 r/arduino 受眾需求
 
 ### [2026-04-06 C2]
 - 主題：HMC5883L 磁力計三軸方位計算
@@ -31,3 +37,8 @@
 - 最佳標題：SHT31 Humidity Sensor Calibration with Arduino - 0.1% Accuracy, 0.3°C Resolution
 - 關鍵字：SHT31, humidity sensor, calibration, Arduino
 - 備註：雙數字規格，適合 r/arduino
+### [2026-04-06 C4]
+- 主題：MPU6050 校正曲線與 6-axis 融合測試
+- 最佳標題：MPU6050 校正曲線與 6-axis 融合測試 - Arduino 0.01° 分辨率實驗數據
+- 關鍵字：MPU6050, 校正曲線, 6-axis, 融合, Arduino
+- 備註：雙數字規格（6-axis/0.01°），強調校正曲線實驗數據差異化，符合歷史成功模式

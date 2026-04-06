@@ -24,3 +24,5 @@
 |------|------|------|------|------|------|
 | 2026-04-06 C1 | 英文版 | SHT31 高精度溫濕度感測校正 | 520 | conversational | Reddit r/arduino 版 |
 | 2026-04-06 C2 | 英文版 | HMC5883L 磁力計三軸方位計算 | 430 | conversational | Reddit r/arduino 版 |
+| 2026-04-06 C3 | 英文版 | ADXL345 衝擊偵測靈敏度設定 | 780 | conversational | Reddit r/arduino 版 |
+| 2026-04-06 C1 | 英文版 | SHT31 高精度溫濕度感測校正 | 273 | conversational | 縮減至300字，側重6個月長期穩定性數據與90天重新校正間隔 |
