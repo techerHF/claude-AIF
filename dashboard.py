@@ -887,6 +887,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <span class="stxt" id="stxt">待命</span>
     </div>
     <span class="tb-ts" id="ts">--</span>
+    <span class="tb-ts" id="tb-countdown" style="min-width:28px;text-align:right;color:var(--t2)">5s</span>
     <button class="tb-btn" onclick="triggerRun()">▶ 執行</button>
     <button class="tb-btn" onclick="triggerStop()">⏹ 停止</button>
   </div>
@@ -1482,7 +1483,7 @@ async function openArticle(name){
     const r=await fetch('/api/article/'+encodeURIComponent(name));
     const d=await r.json();
     if(pb)pb.textContent=d.content||'（無內容）';
-    if(pw)pw.textContent=(d.content||'').split(/\s+/).length+' 詞';
+    if(pw)pw.textContent=(d.content||'').split(/\s+/).filter(w=>w.length>0).length+' 詞';
   }catch(e){if(pb)pb.textContent='載入失敗';}
 }
 async function postToDevto(){
@@ -1509,12 +1510,17 @@ async function sendChat(){
   const btn=document.getElementById('chat-btn');if(btn)btn.disabled=true;
   const typing=document.getElementById('chat-typing');if(typing)typing.style.display='block';
   try{
+    const ctrl=new AbortController();const tid=setTimeout(()=>ctrl.abort(),15000);
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg})});
+      body:JSON.stringify({message:msg}),signal:ctrl.signal});
+    clearTimeout(tid);
     const d=await r.json();
     const reply=d.reply||d.error||'（無回應）';
     msgs.insertAdjacentHTML('beforeend','<div class="cm ai">'+esc(reply)+'</div>');
-  }catch(e){msgs.insertAdjacentHTML('beforeend','<div class="cm ai">❌ 無法連線，請確認伺服器狀態</div>');}
+  }catch(e){
+    const msg2=e.name==='AbortError'?'⏱ 請求逾時（15秒），請重試':'❌ 無法連線，請確認伺服器狀態';
+    msgs.insertAdjacentHTML('beforeend','<div class="cm ai">'+msg2+'</div>');
+  }
   if(btn)btn.disabled=false;
   if(typing)typing.style.display='none';
   msgs.scrollTop=msgs.scrollHeight;
@@ -1522,8 +1528,15 @@ async function sendChat(){
 
 /* TIMER */
 function startTimer(){
-  timer=setInterval(()=>{countdown--;if(countdown<=0){fetchNow();countdown=5;}},1000);
+  timer=setInterval(()=>{
+    countdown--;
+    const cd=document.getElementById('tb-countdown');
+    if(cd)cd.textContent=countdown>0?countdown+'s':'...';
+    if(countdown<=0){fetchNow();countdown=5;}
+  },1000);
 }
+/* ESCAPE key closes alert */
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAlert();});
 fetchNow();startTimer();
 // click blank area in office room to deselect agent
 document.addEventListener('DOMContentLoaded',()=>{
