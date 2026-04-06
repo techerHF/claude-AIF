@@ -681,21 +681,21 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .tbs span{font-size:18px;line-height:1;font-weight:800;color:var(--t0);}
 .tbs.ok span{color:var(--ok);} .tbs.wait span{color:var(--wait);} .tbs.err span{color:var(--brand);}
 /* PIPELINE STRIP */
-.pipe-strip{padding:8px 14px 10px;border-top:1px solid var(--b0);flex-shrink:0;}
-.pipe-strip-hd{font-size:8.5px;font-weight:700;color:var(--t2);letter-spacing:.1em;
-  text-transform:uppercase;margin-bottom:6px;}
-.pipe-row{display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:3px;}
-.pa{display:flex;flex-direction:column;align-items:center;padding:4px 6px;
-  border:1px solid var(--b0);border-radius:4px;cursor:pointer;
-  transition:all .14s;background:var(--bg1);min-width:46px;}
+.pipe-strip{padding:12px 16px 12px;border-top:1px solid var(--b0);flex-shrink:0;}
+.pipe-strip-hd{font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:8px;}
+.pipe-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;}
+.pa{display:flex;flex-direction:column;align-items:center;padding:8px 10px;
+  border:1px solid var(--b0);border-radius:6px;cursor:pointer;
+  transition:all .14s;background:var(--bg1);min-width:60px;}
 .pa:hover{border-color:var(--brand);background:var(--brand-bg);}
 .pa.working{border-color:var(--ok);background:var(--ok-bg);}
 .pa.waiting{border-color:var(--wait);background:var(--wait-bg);}
 .pa.done{opacity:.55;}
-.pa-icon{font-size:12px;}
-.pa-name{font-size:8px;color:var(--t1);white-space:nowrap;}
-.pa-phase{font-size:7px;color:var(--t2);}
-.arr{color:var(--t2);font-size:9px;align-self:center;}
+.pa-icon{font-size:16px;}
+.pa-name{font-size:9.5px;color:var(--t1);white-space:nowrap;font-weight:600;margin-top:3px;}
+.pa-phase{font-size:8px;color:var(--t2);margin-top:1px;}
+.arr{color:var(--t2);font-size:11px;align-self:center;}
 
 /* DIAGNOSTIC */
 .diag-body{flex:1;overflow-y:auto;padding:16px;display:flex;gap:20px;flex-wrap:wrap;align-content:flex-start;}
@@ -1158,6 +1158,7 @@ function setMode(mode,btn){
   document.querySelectorAll('.mt').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   else{const b=document.querySelector('.mt[data-mode="'+mode+'"]');if(b)b.classList.add('active');}
+  if(mode!=='overview'&&selectedAgentId)deselectAgent();
 }
 
 /* OFFICE WORKSTATIONS */
@@ -1326,32 +1327,65 @@ async function fetchRevenue(){
   }catch(e){}
 }
 
-/* FEED (right panel) */
+/* FEED (right panel) — diff-based, only animates new items */
+let _lastFeedSig='';
 function renderFeed(data){
   const el=document.getElementById('feed-items');if(!el)return;
   const feed=data.feed||[];
-  if(!feed.length){el.innerHTML='<div style="padding:14px 12px;color:var(--t2);font-size:9.5px">尚無活動記錄</div>';return;}
+  if(!feed.length){
+    if(_lastFeedSig!=='__empty__'){_lastFeedSig='__empty__';el.innerHTML='<div style="padding:14px 12px;color:var(--t2);font-size:9.5px">尚無活動記錄</div>';}
+    return;
+  }
+  const top20=feed.slice(0,20);
+  const newSig=top20.slice(0,3).map(e=>(e.time||'')+e.msg).join('|');
+  if(newSig===_lastFeedSig)return;
+  const prevSig=_lastFeedSig;_lastFeedSig=newSig;
   const tm={success:'ok',warn:'warn',error:'error',info:''};
-  el.innerHTML=feed.slice(0,20).map(ev=>{
+  const makeItem=(ev,isNew)=>{
     const ag=FM.find(a=>a.id===ev.agent);
     const icon=ag?ag.icon:'◌';
     const tc=tm[ev.type]||'';
-    return '<div class="feed-item">'+
+    const style=isNew?'':' style="animation:none"';
+    return '<div class="feed-item"'+style+'>'+
       '<div class="fi-top"><span class="fi-icon">'+icon+'</span>'+
       '<span class="fi-agent">'+esc(ev.agent)+'</span>'+
       (ev.time?'<span class="fi-time">'+esc(ev.time)+'</span>':'')+
       '</div><div class="fi-msg '+tc+'">'+esc(ev.msg)+'</div></div>';
-  }).join('');
+  };
+  if(!prevSig){el.innerHTML=top20.map(ev=>makeItem(ev,false)).join('');return;}
+  // find new items at the front
+  const existSigs=new Set(
+    Array.from(el.querySelectorAll('.feed-item')).map(e=>{
+      const t=e.querySelector('.fi-time');const m=e.querySelector('.fi-msg');
+      return (t?t.textContent:'')+(m?m.textContent:'');
+    })
+  );
+  const newItems=top20.filter(ev=>!existSigs.has((ev.time||'')+ev.msg));
+  if(!newItems.length)return;
+  const frag=document.createDocumentFragment();
+  newItems.reverse().forEach(ev=>{
+    const tmp=document.createElement('div');tmp.innerHTML=makeItem(ev,true);
+    frag.prepend(tmp.firstChild);
+  });
+  el.prepend(frag);
+  const all=el.querySelectorAll('.feed-item');
+  for(let i=20;i<all.length;i++)all[i].remove();
 }
 
-/* LOG */
+/* LOG — only re-renders when content actually changes */
 const LC={APPROVED:'ok',REJECTED:'warn',ERROR:'err',error:'err',Failed:'err',failed:'err',WARNING:'warn',INFO:'info'};
 function colorLine(l){for(const[k,c]of Object.entries(LC)){if(l.includes(k))return c;}return 'normal';}
+let _lastLogSig='';
 function renderLog(data,tab){
   const el=document.getElementById('log-display');if(!el)return;
   const lines=tab==='cron'?data.cron_log_tail||[]:data.error_log||[];
-  el.innerHTML=lines.slice(-80).map(l=>'<div class="log-line '+colorLine(l)+'">'+esc(l)+'</div>').join('');
-  el.scrollTop=el.scrollHeight;
+  const tail=lines.slice(-80);
+  const sig=tail.slice(-3).join('');
+  if(sig===_lastLogSig)return;
+  _lastLogSig=sig;
+  const wasAtBottom=el.scrollHeight-el.scrollTop-el.clientHeight<40;
+  el.innerHTML=tail.map(l=>'<div class="log-line '+colorLine(l)+'">'+esc(l)+'</div>').join('');
+  if(wasAtBottom)el.scrollTop=el.scrollHeight;
 }
 function switchLog(tab,el){
   currentLogTab=tab;
@@ -1491,7 +1525,13 @@ function startTimer(){
   timer=setInterval(()=>{countdown--;if(countdown<=0){fetchNow();countdown=5;}},1000);
 }
 fetchNow();startTimer();
-setInterval(()=>{if(currentLogTab!=='standup'&&lastData)renderLog(lastData,currentLogTab);},2000);
+// click blank area in office room to deselect agent
+document.addEventListener('DOMContentLoaded',()=>{
+  const room=document.querySelector('.office-room');
+  if(room)room.addEventListener('click',e=>{
+    if(!e.target.closest('.ws')&&selectedAgentId)deselectAgent();
+  });
+});
 </script>
 </body>
 </html>"""
