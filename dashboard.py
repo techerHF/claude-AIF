@@ -606,6 +606,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .hero-meta{display:flex;gap:12px;align-items:center;}
 .hero-stage{font-size:11px;color:var(--brand);font-weight:600;}
 .hero-ts{font-size:10px;color:var(--t2);}
+.hero-next{font-size:10px;color:var(--t1);}
 .hero-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;}
 .hero-run{background:var(--ok-bg);border:1px solid var(--ok);color:var(--ok);padding:7px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
 .hero-run:hover{background:var(--ok);color:#fff;}
@@ -896,7 +897,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
 
 <!-- TOPBAR -->
 <nav class="topbar">
-  <div class="logo">AI 無人工廠<span class="logo-v">v10</span></div>
+  <div class="logo">AI 無人工廠<span class="logo-v">v10.5-HOTFIX</span></div>
   <div class="mode-tabs">
     <button class="mt active" data-mode="overview" onclick="setMode('overview',this)">總覽</button>
     <button class="mt" data-mode="diagnostic" onclick="setMode('diagnostic',this)">診斷</button>
@@ -966,6 +967,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
           <div class="hero-meta">
             <span class="hero-stage" id="hero-stage">—</span>
             <span class="hero-ts" id="hero-ts">—</span>
+            <span class="hero-next" id="hero-next">下一步：等待手動觸發</span>
           </div>
         </div>
         <div class="hero-actions">
@@ -1174,6 +1176,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
 <script>
 let countdown=5,timer=null,lastData=null,devtoName='';
 let selectedAgentId=null,currentLogTab='cron';
+let fetchFailCount=0,lastFetchErr='';
 
 const FM=[
   {id:'researcher',icon:'◎',label:'研究員',phase:'探索'},
@@ -1190,6 +1193,9 @@ const FM=[
 ];
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function utcStamp(){
+  return new Date().toISOString().slice(0,16).replace('T',' ')+' UTC';
+}
 
 /* MODE SWITCHING */
 function setMode(mode,btn){
@@ -1216,7 +1222,10 @@ function updateWorkstations(data){
     else if(hasSel)cls+=' dimmed';
     el.className=cls;
     const stxt=document.getElementById('wst-'+a.id);
-    if(stxt){stxt.textContent=s==='working'?'工作中':s==='waiting'?'等待中':'休息中';stxt.className='ws-stxt '+s;}
+    if(stxt){
+      const sm=s==='working'?'🟢 工作中':s==='waiting'?'🔵 等待中':'⚪ 休息中';
+      stxt.textContent=sm;stxt.className='ws-stxt '+s;
+    }
   });
   const state=data.state||'idle';
   const ts=document.getElementById('table-status');
@@ -1365,6 +1374,17 @@ function renderStatus(data){
   const working=flow.find(a=>a.status==='working');
   const hstage=document.getElementById('hero-stage');
   if(hstage)hstage.textContent=working?'▸ '+working.label:'—';
+  const hnext=document.getElementById('hero-next');
+  if(hnext){
+    let txt='下一步：等待手動觸發';
+    if(s==='running'){
+      if(working){ txt='下一步：完成「'+working.label+'」後交接下一站'; }
+      else{ txt='下一步：同步各 Agent 狀態'; }
+    }else if(s==='error'){
+      txt='下一步：查看診斷或活動頁定位錯誤';
+    }
+    hnext.textContent=txt;
+  }
   // overview-topic-chip now shows working count
   const wk=flow.filter(a=>a.status==='working').length;
   const otc=document.getElementById('overview-topic-chip');
@@ -1471,7 +1491,13 @@ function renderProposals(){}
 /* MAIN FETCH */
 async function fetchNow(){
   try{
-    const r=await fetch('/api/status');const d=await r.json();
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),8000);
+    const r=await fetch('/api/status',{signal:ctrl.signal});
+    clearTimeout(tid);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    fetchFailCount=0;lastFetchErr='';
     lastData=d;
     renderStatus(d);renderKPI(d);updateWorkstations(d);renderPipeline(d);
     if(currentLogTab!=='standup')renderLog(d,currentLogTab);
@@ -1479,7 +1505,22 @@ async function fetchNow(){
     checkAlerts(d);
     if(selectedAgentId)selectAgent(selectedAgentId);
     countdown=5;
-  }catch(e){console.error(e);}
+  }catch(e){
+    fetchFailCount++;
+    lastFetchErr=(e&&e.name==='AbortError')?'請求逾時（8秒）':((e&&e.message)?e.message:'未知錯誤');
+    const fallback={
+      state:'error',ts:utcStamp(),pipeline:{stages:[],article:null,count:0},flow:[],
+      usage:{today:0,total:0},diag:{score:0,issues:[]},api:{model:'離線'},cron_count:0,
+      has_placeholder:false,articles:[],
+      feed:[{time:'',agent:'system',msg:'監控連線失敗：'+lastFetchErr,type:'error'}],
+      error_log:['FETCH_ERROR: '+lastFetchErr]
+    };
+    renderStatus(fallback);renderFeed(fallback);
+    if(fetchFailCount===1||fetchFailCount%6===0){
+      showAlert('CRITICAL','監控連線異常','無法讀取 /api/status：'+lastFetchErr,'err');
+    }
+    countdown=5;
+  }
 }
 
 /* ALERTS */
@@ -1676,6 +1717,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(200)
             self.send_header("Content-Type","text/html; charset=utf-8")
+            self.send_header("Cache-Control","no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma","no-cache")
+            self.send_header("Expires","0")
             self.end_headers()
             self.wfile.write(HTML.encode("utf-8"))
 
@@ -1706,6 +1750,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type","application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin","*")
+        self.send_header("Cache-Control","no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma","no-cache")
+        self.send_header("Expires","0")
         self.end_headers()
         self.wfile.write(data)
 
