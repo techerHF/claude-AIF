@@ -42,3 +42,10 @@
 - 最佳標題：MPU6050 校正曲線與 6-axis 融合測試 - Arduino 0.01° 分辨率實驗數據
 - 關鍵字：MPU6050, 校正曲線, 6-axis, 融合, Arduino
 - 備註：雙數字規格（6-axis/0.01°），強調校正曲線實驗數據差異化，符合歷史成功模式
+
+### [2026-04-06 C4]
+- 主題：INA219 電流功率精準監測
+- 最佳標題：INA219 Current Sensor with Arduino - 32V/3.2A Range, 1% Accuracy, Real-Time Power Monitoring
+- 關鍵字：INA219, 電流功率監測, Arduino功率計
+- 備註：三數字規格（32V/3.2A/1% accuracy），強調精度優勢，符合Reddit r/arduino受眾對具體規格的偏好，過去成功模式驗證（類似SHT31/ADXL345標題）
+[2026-04-06 C2] SEO：HMC5883L 磁力計三軸方位計算 | 最佳標題:HMC5883L 3-Axis Compass with 1.5° Heading Accuracy - Arduino Tutorial | 選擇理由:包含具體型號、1.5°精度數字，符合Reddit標題模式（Device+specific result+context），適合r/arduino受眾

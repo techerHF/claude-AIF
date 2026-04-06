@@ -1,1 +1,1 @@
-{"cycle": 3, "total_done": 42, "pass": 22, "fail": 20, "status": "running", "topic": "ADXL345 衝擊偵測靈敏度設定", "msg_count": 0}
+{"cycle": 2, "total_done": 28, "pass": 15, "fail": 13, "status": "running", "topic": "HMC5883L 磁力計三軸方位計算", "msg_count": 0}

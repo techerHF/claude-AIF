@@ -30,5 +30,11 @@
     "timestamp": "2026-04-06T06:33:03",
     "title": "ADXL345 衝擊偵測靈敏度設定",
     "status": "reviewed"
+  },
+  {
+    "date": "2026-04-06",
+    "timestamp": "2026-04-06T06:48:11",
+    "title": "INA219 電流功率精準監測",
+    "status": "reviewed"
   }
 ]

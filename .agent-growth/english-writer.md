@@ -26,3 +26,5 @@
 | 2026-04-06 C2 | 英文版 | HMC5883L 磁力計三軸方位計算 | 430 | conversational | Reddit r/arduino 版 |
 | 2026-04-06 C3 | 英文版 | ADXL345 衝擊偵測靈敏度設定 | 780 | conversational | Reddit r/arduino 版 |
 | 2026-04-06 C1 | 英文版 | SHT31 高精度溫濕度感測校正 | 273 | conversational | 縮減至300字，側重6個月長期穩定性數據與90天重新校正間隔 |
+| 2026-04-06 C2 | 英文版 | HMC5883L 磁力計三軸方位計算 | 516 | technical | 第一篇英文文章，建立專業權威感 |
+| 2026-04-06 C4 | 英文版 | INA219 電流功率精準監測 | 300 | conversational | 側重 I2C/32V/3.2A/1% 精度，同步量測電流電壓功率差異化 |
