@@ -620,10 +620,10 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .room-tag.rt-se{bottom:18px;right:18px;}
 .office-grid{position:absolute;inset:26px;display:grid;grid-template-columns:1fr 1fr 1.18fr 1fr;grid-template-rows:1fr 1fr 1fr 1fr;
   grid-template-areas:
-    "res top TBL seo"
+    "res top wri seo"
     "eng TBL TBL chi"
     "rev TBL TBL pos"
-    "fdb sty kno pos";
+    "fdb sty kno .  ";
   gap:14px;align-items:stretch;}
 .ws{position:relative;min-height:122px;padding:10px;border-radius:16px;border:1px solid rgba(184,179,171,.85);
   background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(237,234,229,.92));
