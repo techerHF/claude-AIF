@@ -506,3 +506,91 @@ OK
 [⏱ 07:53:52] 🏭 後台運行中... cycle=8/10 done=112/100 ✅54 ❌58
 [⏱ 07:54:17] 🏭 後台運行中... cycle=8/10 done=112/100 ✅54 ❌58
   └─ ❌ Batch G 失敗：
+[master 99f3c69] v3 cycle 6/10 | ✅35 ❌49 | 07:54
+ 4 files changed, 29 insertions(+), 1 deletion(-)
+  [GitHub ✅] Cycle 6 已推送
+
+╔══════════════════════════════════════════════════════════════╗
+║  🏭 AI 無人工廠 | Cycle  6/10 | ✅ 35 ❌ 49 | 完成  84/100  ║
+╠══════════════════════════════════════════════════════════════╣
+║  Agent                  今日  Agent                  今日 ║
+╠══════════════════════════════════════════════════════════════╣
+║  researcher   (研究員)12次  poster       (發文師)11次 ║
+║  topic-selector(選題師)12次  feedback-collector(回饋偵察員)12次 ║
+║  writer       (撰稿人)19次  style-updater(風格調音師)13次 ║
+║  seo-agent    (SEO 師 )15次  knowledge-subagent(知識管家)13次 ║
+║  reviewer     (審稿人)11次  revenue-scout(營收偵察員) 9次 ║
+║  english-writer(英文作家)13次  product-builder(產品建構師)10次 ║
+║  chinese-writer(中文詮釋師)10次  chief-of-staff(秘書長)12次 ║
+╠══════════════════════════════════════════════════════════════╣
+║  📝文章: 24  📚lessons: 54行  💬留言板:133條            ║
+╚══════════════════════════════════════════════════════════════╝
+  ── Cycle 6/10 完成 [07:54:34] ✅35 ❌49 共84任務 ──
+     留言板本輪新增：17 條
+  [冷卻 20 秒，避免 API 超限...]
+[⏱ 07:54:42] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+
+══════ CYCLE 7/10：MAX6675 熱電偶高溫量測補償 [07:54:54] ══════
+       讀取留言板... 134 則待讀訊息
+       緊急停止：touch ~/ai-factory/.stop-test
+
+  ┌─ BATCH A：【研究員】研究 + 【營收偵察員】評估
+  │  正在喚醒 2 個 agent...
+[⏱ 07:55:07] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:55:32] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:55:57] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:56:22] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:56:47] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+  └─ ❌ Batch A 失敗：
+
+  ┌─ BATCH B：【選題師】確認主題
+test-parallel-100.sh: line 189: 68579 Killed                  timeout 90 claude -p "
+# AI 無人工廠 — Orchestrator（Cycle ${CYCLE}/10 Batch B）
+
+使用 Agent tool 呼叫 topic-selector 子 agent。
+
+【選題師的歷史記錄】：
+${H_SELECTOR}
+
+【研究員本輪留言】：
+${RES_LATEST}
+
+在呼叫前輸出：
+「【選題師 🎯】歷史顯示[引用一條記錄，說明哪類選題成功/失敗]。本輪研究員說：${RES_LATEST}。我的確認策略：[基於歷史+研究員建議的具體判斷]。」
+
+任務：
+1. 基於歷史記錄，評估 $TOPIC 是否符合過去成功模式
+2. 執行重複檢查：bash .claude/hooks/duplicate-check.sh '${TOPIC:0:10}'（若腳本不存在直接輸出 UNIQUE）
+3. 在 .agent-growth/topic-selector.md append（Bash echo，不能跳過）：
+   [$TODAY C${CYCLE}] 選題：$TOPIC | 重複:[UNIQUE/DUPLICATE] | 歷史對比:[和過去相比的評估] | 研究員建議:[已採納/忽略，原因]
+4. 在 $MSG_BOARD append：
+   [$TODAY C${CYCLE}][選題師→撰稿人] 主題確認：$TOPIC。切入建議：[基於研究員觀察的具體寫作方向，不是泛泛而談]
+5. 輸出：BATCH_B_DONE:C${CYCLE} TOPIC_CONFIRMED
+" --allowedTools "Agent,Read,Write,Bash" --max-turns 4 > "$_TMP_B_OUT" 2> "$_TMP_B_ERR"
+  └─ ❌ Batch B 失敗：
+
+  ┌─ BATCH C：【撰稿人】+【英文作家】+【SEO師】三路平行
+[⏱ 07:57:12] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:57:37] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:58:02] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:58:27] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:58:52] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:59:17] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 07:59:42] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+  └─ ❌ Batch C 失敗：API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"usage limit exceeded (2056)"},"request_id":"06229b0351ded5a310c7ef1f5370767c"} 
+
+  ┌─ BATCH D：【審稿人】審查 + 【中文詮釋師】詮釋
+[⏱ 08:00:07] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:00:32] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:00:57] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:01:22] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:01:47] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:02:12] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:02:37] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:03:02] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+  └─ ❌ Batch D 失敗： 
+
+  ┌─ BATCH E：【發文師】+【知識管家】+【回饋偵察員】三路平行
+[⏱ 08:03:27] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:03:53] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49
+[⏱ 08:04:18] 🏭 後台運行中... cycle=6/10 done=84/100 ✅35 ❌49

@@ -33,3 +33,4 @@
 [2026-04-06 C5] 掃描：TSL2561 光照度自動曝光控制 | Reddit:封鎖 | 策略調整:改用old.reddit.com/r/arduino/top.json（而非www.reddit.com）仍被拒絕，嘗試新子目錄路徑依然不行 | 發現:TSL2561 積分時間（integration time）分 13.7ms/101ms/402ms 三段，手動切換曝光適合 DIY 攝影測光
 [2026-04-06 C8] 掃描：AS5600 磁性旋轉角度讀取 | Reddit:封鎖 | 發現:AS5600 為 12 位元 Hall-effect 磁性旋轉編碼器，360° 無觸點磨損，I2C/類比輸出可選，磁鐵間距與強度為常見校準痛點，適合馬達轉速控制、機器人關節角度、旋鈕 UI 等應用
 [2026-04-06 C6] 掃描：MCP4725 DAC 類比輸出波形生成 | Reddit:封鎖 | 策略調整:持續封鎖，改用本地感測器專業建構demand signal，搜尋波形生成技術應用場景 | 發現:MCP4725 I2C更新速率400kHz約344µs/byte為波形生成瓶頸，waveform table查表法可突破軟體更新頻率限制
+[2026-04-06 C7] 掃描：MAX6675 熱電偶高溫量測補償 | bash-fallback | Batch A 未完成

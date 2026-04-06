@@ -137,3 +137,11 @@
 [2026-04-06 C6][診斷] Batch E 失敗：
 [2026-04-06 C9][診斷] Batch B 失敗： 
 [2026-04-06 C6][診斷] Batch F 失敗：
+[2026-04-06 C9][診斷] Batch C 失敗：API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"usa
+[2026-04-06 C7][診斷] Batch A 失敗：
+[2026-04-06 C7][診斷] Batch B 失敗：
+[2026-04-06 C9][診斷] Batch D 失敗： 
+[2026-04-06 C9][診斷] Batch E 失敗： 
+[2026-04-06 C7][診斷] Batch C 失敗：API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"usage limit exceeded (2
+[2026-04-06 C9][診斷] Batch F 失敗： 
+[2026-04-06 C7][診斷] Batch D 失敗： 
