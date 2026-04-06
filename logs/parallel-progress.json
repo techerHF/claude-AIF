@@ -1,1 +1,1 @@
-{"cycle": 5, "total_done": 56, "pass": 42, "fail": 14, "status": "stopped_by_user"}
+{"cycle": 1, "total_done": 14, "pass": 10, "fail": 4, "status": "running", "topic": "SHT31 高精度溫濕度感測校正", "msg_count": 0}

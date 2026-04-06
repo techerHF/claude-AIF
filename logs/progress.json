@@ -18,5 +18,11 @@
     "category": "B",
     "article_path": "articles/2026-04-05-flex-sensor-gesture.md",
     "reddit_draft": "logs/reddit-draft-2026-04-05.md"
+  },
+  {
+    "date": "2026-04-06",
+    "timestamp": "2026-04-06T06:02:07",
+    "title": "SHT31 高精度溫濕度感測校正",
+    "status": "reviewed"
   }
 ]

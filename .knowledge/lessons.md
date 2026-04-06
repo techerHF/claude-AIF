@@ -12,6 +12,8 @@ YYYY-MM-DD 踩坑：[問題描述]
 
 ## 記錄
 
+[2026-04-06 C1] SHT31 高精度溫濕度感測校正 | 審查:REJECTED | UV模擬:48 | 留言板互動:6條
+
 2026-04-04 踩坑：quality-check.sh 在文章無數字時 pipefail 中止整個腳本
 原因：`set -euo pipefail` 下，`grep -oE '[0-9]...'` 找不到匹配時 exit 1，導致 pipeline 失敗，腳本靜默退出
 解法：改用 `{ grep -oE '...' || true; }` 包裹，確保 pipeline 永遠回傳 0

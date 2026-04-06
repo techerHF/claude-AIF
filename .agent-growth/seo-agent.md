@@ -13,7 +13,15 @@
 （對團隊或系統提出的改進建議）
 
 ## 上次執行時間
-（系統自動更新）
+[2026-04-06 C1]
 
 ## 本月執行次數
-0
+1
+
+## SEO 提案記錄
+
+### [2026-04-06 C1]
+- 主題：SHT31 高精度溫濕度感測校正
+- 最佳標題：SHT31 Humidity Sensor Calibration with Arduino - 0.1% Accuracy, 0.3°C Resolution
+- 關鍵字：SHT31, humidity sensor, calibration, Arduino
+- 備註：雙數字規格，適合 r/arduino
