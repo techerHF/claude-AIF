@@ -17,14 +17,14 @@ _chat_history = []
 #  完整流程定義（11 Agents、檔案 I/O、Skills、Hooks）
 # ══════════════════════════════════════════════════════════
 PIPELINE_FLOW = [
-  {"id":"researcher",       "order":1,  "label":"研究員",   "icon":"◎", "phase":"探索",
+  {"id":"researcher",       "order":1,  "label":"秘書",   "icon":"◎", "phase":"探索",
    "desc":"爬蟲 4 個 subreddit，評估需求，找 Amazon.co.jp 聯盟商品",
    "reads": ["CLAUDE.md","logs/topic-performance.json",".knowledge/performance.md"],
    "writes":["logs/demand_signals.json","logs/affiliate-links.json"],
    "skills":["researcher-strategy","audience-targeting"],
    "hooks": []},
 
-  {"id":"topic-selector",   "order":2,  "label":"選題",     "icon":"◈", "phase":"策略",
+  {"id":"topic-selector",   "order":2,  "label":"經理",     "icon":"◈", "phase":"策略",
    "desc":"合併需求信號與歷史表現，決定唯一下一篇主題，避免重複",
    "reads": ["logs/demand_signals.json",".knowledge/posted-articles.md",".knowledge/performance.md"],
    "writes":["logs/progress.json"],
@@ -958,7 +958,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
     <div class="mode-panel mode-overview">
       <!-- HERO -->
       <div class="hero" id="hero-bar">
-        <div class="hero-left">
+        <div class="hero-left">\n          <div style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#d7e8ff;background:rgba(17,29,56,.78);border:1px solid rgba(122,169,255,.35);border-radius:999px;padding:3px 8px;width:max-content;">👑 Boss Console｜你下達絕對指令，團隊自主管理執行</div>
           <div class="hero-status">
             <span class="hero-dot"></span>
             <span class="hero-state" id="hero-state">待命中</span>
@@ -979,7 +979,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
         <div class="scene-caption">
           <div>
             <div class="scene-title">AI 團隊工作空間</div>
-            <div class="scene-sub">俯視辦公室控制室</div>
+            <div class="scene-sub">扁平化團隊：秘書/經理為內部 GameMaster，其他 Agent 平行協作</div>
           </div>
           <div class="scene-meta">
             <div class="scene-pill">選中 <strong id="overview-selected">無</strong></div>
@@ -987,18 +987,18 @@ body[data-mode="control"]    .mode-control{display:flex;}
           </div>
         </div>
         <div class="office-room">
-          <div class="room-tag rt-nw"><strong>探索區</strong> 需求與選題</div>
+          <div class="room-tag rt-nw"><strong>探索區</strong> 探索與協調</div>
           <div class="room-tag rt-ne"><strong>生產區</strong> 內容與 SEO</div>
           <div class="room-tag rt-sw"><strong>回饋區</strong> 審稿與觀測</div>
           <div class="room-tag rt-se"><strong>知識區</strong> 發布與演化</div>
           <div class="office-grid">
             <div class="ws ws-researcher" id="ws-researcher" onclick="selectAgent('researcher')">
-              <div class="ws-hd"><span class="ws-icon">◎</span><div class="ws-copy"><span class="ws-name">研究員</span><span class="ws-phase">探索</span></div><span class="ws-led"></span></div>
+              <div class="ws-hd"><span class="ws-icon">◎</span><div class="ws-copy"><span class="ws-name">秘書</span><span class="ws-phase">協調</span></div><span class="ws-led"></span></div>
               <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-researcher">休息中</span><span class="ws-brief">需求掃描</span></div>
             </div>
             <div class="ws ws-topic-selector" id="ws-topic-selector" onclick="selectAgent('topic-selector')">
-              <div class="ws-hd"><span class="ws-icon">◈</span><div class="ws-copy"><span class="ws-name">選題</span><span class="ws-phase">策略</span></div><span class="ws-led"></span></div>
+              <div class="ws-hd"><span class="ws-icon">◈</span><div class="ws-copy"><span class="ws-name">經理</span><span class="ws-phase">統籌</span></div><span class="ws-led"></span></div>
               <div class="ws-desk"><span class="ws-monitor"></span><span class="ws-paper"></span><span class="ws-chair"></span></div>
               <div class="ws-meta"><span class="ws-stxt idle" id="wst-topic-selector">休息中</span><span class="ws-brief">主題決策</span></div>
             </div>
@@ -1179,8 +1179,8 @@ let selectedAgentId=null,currentLogTab='cron';
 let fetchFailCount=0,lastFetchErr='';
 
 const FM=[
-  {id:'researcher',icon:'◎',label:'研究員',phase:'探索'},
-  {id:'topic-selector',icon:'◈',label:'選題',phase:'策略'},
+  {id:'researcher',icon:'◎',label:'秘書',phase:'協調'},
+  {id:'topic-selector',icon:'◈',label:'經理',phase:'統籌'},
   {id:'writer',icon:'✦',label:'中文初稿',phase:'生產'},
   {id:'seo-agent',icon:'S',label:'SEO',phase:'生產'},
   {id:'english-writer',icon:'E',label:'英文寫手',phase:'生產'},
