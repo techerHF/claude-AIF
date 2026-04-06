@@ -592,14 +592,34 @@ body[data-mode="content"]    .mode-content{display:flex;}
 body[data-mode="activity"]   .mode-activity{display:flex;}
 body[data-mode="control"]    .mode-control{display:flex;}
 
+/* HERO SECTION */
+.hero{flex-shrink:0;padding:16px 18px 12px;background:linear-gradient(135deg,var(--brand-bg) 0%,rgba(245,243,240,.95) 60%);border-bottom:2px solid var(--b0);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;}
+.hero-left{display:flex;flex-direction:column;gap:6px;}
+.hero-status{display:flex;align-items:center;gap:10px;}
+.hero-dot{width:10px;height:10px;border-radius:50%;background:var(--t2);flex-shrink:0;}
+.hero.running .hero-dot{background:var(--ok);animation:pulse 1.2s infinite;}
+.hero.error .hero-dot{background:var(--err);animation:pulse .6s infinite;}
+.hero-state{font-size:20px;font-weight:800;color:var(--t0);letter-spacing:.01em;}
+.hero.running .hero-state{color:var(--ok);}
+.hero.error .hero-state{color:var(--err);}
+.hero-topic{font-size:12px;color:var(--t1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;}
+.hero-meta{display:flex;gap:12px;align-items:center;}
+.hero-stage{font-size:11px;color:var(--brand);font-weight:600;}
+.hero-ts{font-size:10px;color:var(--t2);}
+.hero-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;}
+.hero-run{background:var(--ok-bg);border:1px solid var(--ok);color:var(--ok);padding:7px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
+.hero-run:hover{background:var(--ok);color:#fff;}
+.hero-stop{background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);padding:7px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;transition:all .12s;}
+.hero-stop:hover{background:var(--warn);color:#fff;}
+
 /* OFFICE STAGE */
-.overview-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:14px;gap:10px;}
-.scene-caption{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:2px 2px 0;}
-.scene-title{font-size:17px;font-weight:700;color:var(--t0);letter-spacing:.01em;}
-.scene-sub{font-size:11px;color:var(--t1);}
-.scene-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.scene-pill{padding:4px 8px;border:1px solid var(--b0);border-radius:999px;font-size:10px;color:var(--t1);background:rgba(255,255,255,.45);}
-.scene-pill strong{color:var(--t0);font-weight:700;}
+.overview-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:10px 14px 14px;gap:10px;}
+.scene-caption{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 0;}
+.scene-title{font-size:13px;font-weight:600;color:var(--t1);letter-spacing:.01em;}
+.scene-sub{font-size:10px;color:var(--t2);}
+.scene-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.scene-pill{padding:3px 7px;border:1px solid var(--b0);border-radius:999px;font-size:9.5px;color:var(--t2);background:rgba(255,255,255,.35);}
+.scene-pill strong{color:var(--t1);font-weight:600;}
 .office-room{flex:1;min-height:0;position:relative;border:1px solid var(--b0);border-radius:18px;overflow:hidden;
   background:
     linear-gradient(transparent 95%, rgba(184,179,171,.15) 100%),
@@ -757,9 +777,10 @@ body[data-mode="control"]    .mode-control{display:flex;}
 .log-line.err{color:var(--err);}
 .log-line.info{color:var(--brand);}
 
-/* CONTROL */
-.ctrl-wrap{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px;}
+/* CONTROL — 左右兩欄 */
+.ctrl-wrap{flex:1;overflow:hidden;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;align-content:start;}
 .ctrl-section{background:var(--bg1);border:1px solid var(--b0);border-radius:6px;padding:12px 14px;}
+.ctrl-section.chat-section{display:flex;flex-direction:column;height:100%;max-height:calc(100vh - 160px);}
 .ctrl-hd{font-size:8.5px;font-weight:700;color:var(--t2);
   letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;}
 .ctrl-btns{display:flex;gap:8px;margin-bottom:10px;}
@@ -777,7 +798,7 @@ body[data-mode="control"]    .mode-control{display:flex;}
   padding:5px 10px;border-radius:4px;cursor:pointer;font-size:10px;
   font-family:inherit;transition:all .12s;}
 .topic-btn:hover{border-color:var(--brand);color:var(--brand);}
-.chat-msgs{min-height:60px;max-height:180px;overflow-y:auto;margin-bottom:8px;
+.chat-msgs{flex:1;min-height:80px;overflow-y:auto;margin-bottom:8px;
   display:flex;flex-direction:column;gap:4px;}
 .cm{padding:6px 9px;border-radius:5px;font-size:10px;line-height:1.5;
   animation:fadeIn .15s ease;max-width:88%;}
@@ -889,8 +910,6 @@ body[data-mode="control"]    .mode-control{display:flex;}
       <span class="stxt" id="stxt">待命</span>
     </div>
     <span class="tb-ts" id="ts">--</span>
-    <button class="tb-btn" onclick="triggerRun()">▶ 執行</button>
-    <button class="tb-btn" onclick="triggerStop()">⏹ 停止</button>
   </div>
   <div id="tb-bar"></div>
 </nav>
@@ -936,16 +955,33 @@ body[data-mode="control"]    .mode-control{display:flex;}
 
     <!-- OVERVIEW -->
     <div class="mode-panel mode-overview">
+      <!-- HERO -->
+      <div class="hero" id="hero-bar">
+        <div class="hero-left">
+          <div class="hero-status">
+            <span class="hero-dot"></span>
+            <span class="hero-state" id="hero-state">待命中</span>
+          </div>
+          <div class="hero-topic" id="hero-topic">尚未開始任務</div>
+          <div class="hero-meta">
+            <span class="hero-stage" id="hero-stage">—</span>
+            <span class="hero-ts" id="hero-ts">—</span>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button class="hero-run" onclick="triggerRun()">▶ 立即執行</button>
+          <button class="hero-stop" onclick="triggerStop()">⏹ 停止</button>
+        </div>
+      </div>
       <div class="overview-wrap">
         <div class="scene-caption">
           <div>
             <div class="scene-title">AI 團隊工作空間</div>
-            <div class="scene-sub">俯視辦公室控制室｜每個席位都代表一個正在協作的 Agent 工作站</div>
+            <div class="scene-sub">俯視辦公室控制室</div>
           </div>
           <div class="scene-meta">
-            <div class="scene-pill">主題 <strong id="overview-topic-chip">等待任務</strong></div>
-            <div class="scene-pill">模式 <strong id="overview-state-chip">待命中</strong></div>
             <div class="scene-pill">選中 <strong id="overview-selected">無</strong></div>
+            <div class="scene-pill">工作中 <strong id="overview-topic-chip">0</strong></div>
           </div>
         </div>
         <div class="office-room">
@@ -1082,14 +1118,22 @@ body[data-mode="control"]    .mode-control{display:flex;}
     <!-- CONTROL -->
     <div class="mode-panel mode-control">
       <div class="ctrl-wrap">
-        <div class="ctrl-section">
-          <div class="ctrl-hd">強制主題</div>
-          <div class="ctrl-topic">
-            <input id="topic-input" class="topic-inp" placeholder="輸入主題後套用，會發送到控制對話"/>
-            <button class="topic-btn" onclick="triggerTopic()">套用</button>
+        <!-- 左欄：系統控制 -->
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="ctrl-section">
+            <div class="ctrl-hd">強制主題</div>
+            <div class="ctrl-topic">
+              <input id="topic-input" class="topic-inp" placeholder="輸入主題後套用…"/>
+              <button class="topic-btn" onclick="triggerTopic()">套用</button>
+            </div>
+          </div>
+          <div class="ctrl-section">
+            <div class="ctrl-hd">系統設定狀態</div>
+            <div id="ctrl-settings"></div>
           </div>
         </div>
-        <div class="ctrl-section">
+        <!-- 右欄：聊天對話 -->
+        <div class="ctrl-section chat-section">
           <div class="ctrl-hd">控制對話</div>
           <div id="chat-msgs" class="chat-msgs"></div>
           <div id="chat-typing" class="chat-typing" style="display:none">AI 思考中...</div>
@@ -1097,10 +1141,6 @@ body[data-mode="control"]    .mode-control{display:flex;}
             <textarea id="chat-in" class="chat-in" rows="2" placeholder="輸入指令..." onkeydown="chatKey(event)"></textarea>
             <button id="chat-btn" class="chat-btn" onclick="sendChat()">送出</button>
           </div>
-        </div>
-        <div class="ctrl-section">
-          <div class="ctrl-hd">系統設定狀態</div>
-          <div id="ctrl-settings"></div>
         </div>
       </div>
     </div>
@@ -1182,12 +1222,10 @@ function updateWorkstations(data){
   const ts=document.getElementById('table-status');
   const stateText=state==='running'?'執行中':state==='error'?'異常':'待命中';
   if(ts)ts.textContent=stateText;
-  const stateChip=document.getElementById('overview-state-chip'); if(stateChip) stateChip.textContent=stateText;
   const pipe=data.pipeline||{};
   const topicText=(pipe.article&&pipe.article.title)?pipe.article.title:'等待任務';
   const tt=document.getElementById('table-topic');
   if(tt)tt.textContent=topicText;
-  const topicChip=document.getElementById('overview-topic-chip'); if(topicChip) topicChip.textContent=topicText;
   const selectedLabel = selectedAgentId ? ((FM.find(a=>a.id===selectedAgentId)||{}).label||selectedAgentId) : '無';
   const selectedEl=document.getElementById('overview-selected'); if(selectedEl) selectedEl.textContent=selectedLabel;
   const tbSel=document.getElementById('tb-selected'); if(tbSel) tbSel.textContent=selectedLabel;
@@ -1313,6 +1351,24 @@ function renderStatus(data){
   pill.className='status-pill '+(s==='running'?'s-run':s==='error'?'s-err':'s-idle');
   stxt.textContent=s==='running'?'執行中':s==='error'?'異常':'待命';
   const ts=document.getElementById('ts');if(ts)ts.textContent=data.ts||'--';
+  // Hero sync
+  const hero=document.getElementById('hero-bar');
+  if(hero){hero.className='hero'+(s==='running'?' running':s==='error'?' error':'');}
+  const hs=document.getElementById('hero-state');
+  if(hs)hs.textContent=s==='running'?'執行中':s==='error'?'異常':'待命中';
+  const hts=document.getElementById('hero-ts');
+  if(hts)hts.textContent=data.ts?'最後更新 '+data.ts:'—';
+  const pipe=data.pipeline||{};
+  const ht=document.getElementById('hero-topic');
+  if(ht)ht.textContent=(pipe.article&&pipe.article.title)?pipe.article.title:'尚未開始任務';
+  const flow=data.flow||[];
+  const working=flow.find(a=>a.status==='working');
+  const hstage=document.getElementById('hero-stage');
+  if(hstage)hstage.textContent=working?'▸ '+working.label:'—';
+  // overview-topic-chip now shows working count
+  const wk=flow.filter(a=>a.status==='working').length;
+  const otc=document.getElementById('overview-topic-chip');
+  if(otc)otc.textContent=wk;
 }
 
 /* REVENUE */
