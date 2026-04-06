@@ -1,1 +1,1 @@
-{"cycle": 8, "total_done": 112, "pass": 54, "fail": 58, "status": "running", "topic": "AS5600 磁性旋轉角度讀取", "msg_count": 0}
+{"cycle": 6, "total_done": 84, "pass": 35, "fail": 49, "status": "running", "topic": "MCP4725 DAC 類比輸出波形生成", "msg_count": 0}
